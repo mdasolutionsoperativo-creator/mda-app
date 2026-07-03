@@ -1,0 +1,2416 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1e40af">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MDA Solutions">
+  <title>MDA Solutions</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Google APIs -->
+  <script src="https://apis.google.com/js/api.js" async defer onload="gapiLoaded()"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
+  <style>
+    /* ─── RESET & VARIABILI ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --blue:       #1e40af;
+      --blue-mid:   #2563eb;
+      --blue-light: #3b82f6;
+      --blue-pale:  #eff6ff;
+      --green:      #10b981;
+      --amber:      #f59e0b;
+      --red:        #ef4444;
+      --purple:     #8b5cf6;
+      --bg:         #f1f5f9;
+      --card:       #ffffff;
+      --text:       #1e293b;
+      --sub:        #64748b;
+      --border:     #e2e8f0;
+      --radius:     14px;
+      --shadow:     0 2px 12px rgba(0,0,0,.08);
+    }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
+
+    /* ─── SCHERMATE ─────────────────────────────────────────── */
+    .screen { display: none; flex-direction: column; height: 100dvh; overflow: hidden; }
+    .screen.active { display: flex; }
+
+    /* ─── HEADER ────────────────────────────────────────────── */
+    .app-header {
+      background: var(--blue);
+      color: #fff;
+      padding: 14px 18px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      safe-area-inset-top: env(safe-area-inset-top);
+    }
+    .app-header h1 { font-size: 17px; font-weight: 700; }
+    .app-header .sub { font-size: 12px; opacity: .75; }
+    .btn-logout { background: rgba(255,255,255,.15); border: none; color: #fff; border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+
+    /* ─── SCROLL CONTENT ────────────────────────────────────── */
+    .scroll-area { flex: 1; overflow-y: auto; padding: 16px; -webkit-overflow-scrolling: touch; padding-bottom: 80px; }
+
+    /* ─── BOTTOM NAV ────────────────────────────────────────── */
+    #bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #fff;
+      border-top: 1px solid var(--border);
+      display: flex;
+      padding-bottom: env(safe-area-inset-bottom);
+      z-index: 100;
+    }
+    #bottom-nav.hidden { display: none; }
+    .nav-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 8px 4px 6px; border: none; background: none; cursor: pointer;
+      color: var(--sub); font-size: 10px; font-weight: 500; gap: 3px;
+      transition: color .2s;
+    }
+    .nav-btn.active { color: var(--blue-mid); }
+    .nav-btn svg { width: 22px; height: 22px; }
+
+    /* ─── CARDS ─────────────────────────────────────────────── */
+    .card {
+      background: var(--card); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 16px; margin-bottom: 12px;
+    }
+    .card-title { font-size: 13px; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+
+    /* ─── BADGES TECNICI ────────────────────────────────────── */
+    .tech-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 50%; color: #fff; font-size: 13px; font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* ─── APPUNTAMENTO CARD ─────────────────────────────────── */
+    .appt-card {
+      background: var(--card); border-radius: 12px; padding: 14px 16px;
+      margin-bottom: 10px; box-shadow: var(--shadow);
+      display: flex; align-items: flex-start; gap: 12px;
+      border-left: 4px solid var(--blue-light);
+    }
+    .appt-card.extra { border-left-color: var(--amber); }
+    .appt-card.completed { opacity: .55; }
+    .appt-time { font-size: 13px; font-weight: 700; color: var(--blue-mid); min-width: 46px; }
+    .appt-info { flex: 1; }
+    .appt-client { font-size: 15px; font-weight: 600; }
+    .appt-type { font-size: 12px; color: var(--sub); margin-top: 2px; }
+    .appt-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .btn-sm {
+      font-size: 12px; padding: 5px 10px; border-radius: 8px; border: none;
+      cursor: pointer; font-weight: 600;
+    }
+    .btn-sm.primary { background: var(--blue-pale); color: var(--blue-mid); }
+    .btn-sm.success { background: #d1fae5; color: var(--green); }
+    .btn-sm.amber { background: #fef3c7; color: #92400e; }
+
+    /* ─── BOTTONI PRINCIPALI ────────────────────────────────── */
+    .btn {
+      display: block; width: 100%; padding: 14px; border-radius: 12px;
+      border: none; font-size: 16px; font-weight: 700; cursor: pointer;
+      transition: opacity .15s; text-align: center;
+    }
+    .btn:active { opacity: .8; }
+    .btn-primary { background: var(--blue-mid); color: #fff; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-green { background: var(--green); color: #fff; }
+    .btn-amber { background: var(--amber); color: #fff; }
+    .btn-red { background: var(--red); color: #fff; }
+
+    /* ─── FORM ──────────────────────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--sub); margin-bottom: 6px; }
+    .form-control {
+      width: 100%; padding: 12px 14px; border: 1.5px solid var(--border);
+      border-radius: 10px; font-size: 15px; color: var(--text);
+      background: #fff; appearance: none;
+    }
+    .form-control:focus { outline: none; border-color: var(--blue-mid); }
+    select.form-control { cursor: pointer; }
+    textarea.form-control { resize: vertical; min-height: 80px; }
+
+    /* ─── SECTION TITLE ─────────────────────────────────────── */
+    .section-title {
+      font-size: 18px; font-weight: 800; color: var(--text);
+      margin-bottom: 14px; margin-top: 4px;
+    }
+
+    /* ─── STAT BOXES ─────────────────────────────────────────── */
+    .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .stat-box { background: var(--card); border-radius: 12px; padding: 14px; box-shadow: var(--shadow); text-align: center; }
+    .stat-num { font-size: 28px; font-weight: 800; color: var(--blue-mid); }
+    .stat-label { font-size: 11px; color: var(--sub); font-weight: 600; margin-top: 2px; }
+
+    /* ─── EMPTY STATE ────────────────────────────────────────── */
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--sub); }
+    .empty-state svg { width: 56px; height: 56px; opacity: .3; margin-bottom: 12px; }
+    .empty-state p { font-size: 15px; }
+
+    /* ─── FIRMA ──────────────────────────────────────────────── */
+    #signature-canvas {
+      width: 100%; height: 180px; border: 2px dashed var(--border);
+      border-radius: 12px; touch-action: none; cursor: crosshair; background: #fff;
+    }
+    .sign-label { font-size: 12px; color: var(--sub); text-align: center; margin-top: 6px; }
+
+    /* ─── CHIP TIPO ──────────────────────────────────────────── */
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+    .chip {
+      padding: 7px 14px; border-radius: 20px; border: 1.5px solid var(--border);
+      font-size: 13px; cursor: pointer; font-weight: 500; background: #fff;
+      transition: all .15s;
+    }
+    .chip.selected { background: var(--blue-mid); color: #fff; border-color: var(--blue-mid); }
+
+    /* ═══════════════════════════════════════════════════════════
+       LOGIN
+    ═══════════════════════════════════════════════════════════ */
+    #screen-login {
+      justify-content: center; align-items: center;
+      background: linear-gradient(160deg, #1e3a8a 0%, #1e40af 60%, #2563eb 100%);
+      min-height: 100dvh;
+    }
+    .login-box { width: 100%; max-width: 340px; padding: 0 24px; }
+    .login-logo { text-align: center; margin-bottom: 36px; }
+    .login-logo .logo-icon {
+      width: 72px; height: 72px; background: rgba(255,255,255,.15);
+      border-radius: 20px; margin: 0 auto 14px; display: flex;
+      align-items: center; justify-content: center;
+    }
+    .login-logo .logo-icon svg { width: 40px; height: 40px; color: #fff; }
+    .login-logo h1 { color: #fff; font-size: 22px; font-weight: 800; }
+    .login-logo p { color: rgba(255,255,255,.65); font-size: 13px; margin-top: 4px; }
+
+    .pin-display {
+      display: flex; justify-content: center; gap: 14px; margin-bottom: 28px;
+    }
+    .pin-dot {
+      width: 16px; height: 16px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.5); background: transparent;
+      transition: background .15s;
+    }
+    .pin-dot.filled { background: #fff; border-color: #fff; }
+
+    .pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .pin-key {
+      background: rgba(255,255,255,.12); border: none; border-radius: 14px;
+      color: #fff; font-size: 22px; font-weight: 600;
+      height: 64px; cursor: pointer; transition: background .1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pin-key:active { background: rgba(255,255,255,.28); }
+    .pin-key.del { font-size: 18px; }
+    .pin-key.confirm { background: rgba(255,255,255,.22); }
+    .pin-error { color: #fca5a5; text-align: center; font-size: 14px; margin-bottom: 14px; min-height: 20px; }
+
+    /* ═══════════════════════════════════════════════════════════
+       AGENDA — date strip
+    ═══════════════════════════════════════════════════════════ */
+    .date-strip {
+      display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 12px;
+      scrollbar-width: none; -ms-overflow-style: none;
+    }
+    .date-strip::-webkit-scrollbar { display: none; }
+    .date-chip {
+      flex-shrink: 0; display: flex; flex-direction: column; align-items: center;
+      width: 46px; padding: 8px 4px; border-radius: 12px; cursor: pointer;
+      background: var(--card); box-shadow: var(--shadow);
+    }
+    .date-chip.today { background: var(--blue-mid); color: #fff; }
+    .date-chip.selected { background: var(--blue-pale); color: var(--blue-mid); font-weight: 700; }
+    .date-chip .dow { font-size: 11px; font-weight: 600; opacity: .7; }
+    .date-chip .dom { font-size: 18px; font-weight: 800; }
+
+    /* ═══════════════════════════════════════════════════════════
+       RAPPORTINO
+    ═══════════════════════════════════════════════════════════ */
+    .rapportino-num {
+      background: var(--blue-pale); border-radius: 10px; padding: 10px 14px;
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 16px;
+    }
+    .rapportino-num span { font-size: 13px; color: var(--sub); }
+    .rapportino-num strong { font-size: 16px; color: var(--blue-mid); }
+
+    /* ═══════════════════════════════════════════════════════════
+       ADMIN — lista tecnici
+    ═══════════════════════════════════════════════════════════ */
+    .tech-row {
+      display: flex; align-items: center; gap: 12px; padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tech-row:last-child { border-bottom: none; }
+    .tech-row-selected { background: #eff6ff; border-radius: 8px; padding: 12px 8px; margin: 0 -8px; }
+    .tech-row:hover { background: #f8fafc; border-radius: 8px; }
+    .tech-info { flex: 1; }
+    .tech-name { font-weight: 600; font-size: 15px; }
+    .tech-count { font-size: 12px; color: var(--sub); }
+
+    /* ═══════════════════════════════════════════════════════════
+       MODAL
+    ═══════════════════════════════════════════════════════════ */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.5);
+      z-index: 200; display: flex; align-items: flex-end;
+      transition: opacity .2s;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-sheet {
+      background: #fff; border-radius: 20px 20px 0 0;
+      width: 100%; max-height: 90dvh; overflow-y: auto;
+      padding: 20px 20px 36px;
+    }
+    .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 18px; }
+    .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 18px; }
+
+    /* ─── TOAST ──────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+      background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 20px;
+      font-size: 14px; z-index: 300; opacity: 0; transition: opacity .3s;
+      pointer-events: none; white-space: nowrap;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ─── FAB ────────────────────────────────────────────────── */
+    .fab {
+      position: fixed; bottom: 76px; right: 18px;
+      width: 52px; height: 52px; border-radius: 50%;
+      background: var(--blue-mid); color: #fff; border: none;
+      font-size: 26px; cursor: pointer; box-shadow: 0 4px 16px rgba(37,99,235,.4);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 99;
+    }
+
+    /* ─── DIVIDER ────────────────────────────────────────────── */
+    .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+    /* ─── TOGGLE ─────────────────────────────────────────────── */
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; }
+    .toggle-label { font-size: 15px; }
+    input[type=checkbox] { width: 44px; height: 26px; appearance: none; background: var(--border); border-radius: 13px; cursor: pointer; transition: background .2s; position: relative; flex-shrink: 0; }
+    input[type=checkbox]::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left .2s; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+    input[type=checkbox]:checked { background: var(--green); }
+    input[type=checkbox]:checked::after { left: 21px; }
+
+    /* ─── DATE INPUT ─────────────────────────────────────────── */
+    input[type=date].form-control, input[type=time].form-control, input[type=text].form-control { -webkit-appearance: none; }
+
+    /* ─── ADMIN HIGHLIGHT ────────────────────────────────────── */
+    .admin-banner {
+      background: linear-gradient(135deg, #1e3a8a, #1e40af);
+      color: #fff; border-radius: 12px; padding: 14px 16px;
+      margin-bottom: 14px; display: flex; align-items: center; gap: 12px;
+    }
+    .admin-banner svg { width: 24px; height: 24px; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     SCHERMATA LOGIN
+═══════════════════════════════════════════════════════ -->
+<div id="screen-login" class="screen active">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        </svg>
+      </div>
+      <h1>MDA Solutions</h1>
+      <p>Gestione Interventi</p>
+    </div>
+
+    <div class="pin-display" id="pin-display">
+      <div class="pin-dot" id="dot-0"></div>
+      <div class="pin-dot" id="dot-1"></div>
+      <div class="pin-dot" id="dot-2"></div>
+      <div class="pin-dot" id="dot-3"></div>
+    </div>
+
+    <div class="pin-error" id="pin-error"></div>
+
+    <div class="pin-pad">
+      <button class="pin-key" onclick="pinPress('1')">1</button>
+      <button class="pin-key" onclick="pinPress('2')">2</button>
+      <button class="pin-key" onclick="pinPress('3')">3</button>
+      <button class="pin-key" onclick="pinPress('4')">4</button>
+      <button class="pin-key" onclick="pinPress('5')">5</button>
+      <button class="pin-key" onclick="pinPress('6')">6</button>
+      <button class="pin-key" onclick="pinPress('7')">7</button>
+      <button class="pin-key" onclick="pinPress('8')">8</button>
+      <button class="pin-key" onclick="pinPress('9')">9</button>
+      <button class="pin-key del" onclick="pinDelete()">⌫</button>
+      <button class="pin-key" onclick="pinPress('0')">0</button>
+      <button class="pin-key confirm" onclick="pinConfirm()">✓</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SCHERMATA PRINCIPALE (home / agenda / intervento / rapportino)
+═══════════════════════════════════════════════════════ -->
+<div id="screen-main" class="screen">
+  <!-- Header -->
+  <div class="app-header">
+    <div>
+      <div class="sub" id="header-date"></div>
+      <h1 id="header-name">MDA Solutions</h1>
+    </div>
+    <button class="btn-logout" onclick="logout()">Esci</button>
+  </div>
+
+  <!-- TAB HOME -->
+  <div id="tab-home" class="scroll-area" style="display:none">
+    <div id="admin-banner-home" class="admin-banner" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      <div>
+        <div style="font-weight:700">Vista Amministratore</div>
+        <div style="font-size:12px;opacity:.8">Vedi tutti i tecnici e le impostazioni</div>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-num" id="stat-today">0</div>
+        <div class="stat-label">Interventi oggi</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="stat-week">0</div>
+        <div class="stat-label">Questa settimana</div>
+      </div>
+    </div>
+
+    <p class="section-title">Oggi</p>
+    <div id="home-appt-list"></div>
+
+    <!-- Tecnico: scarica presenze personali -->
+    <div id="presenze-section" style="display:none;margin-top:16px">
+      <p class="section-title">📋 Le mie presenze</p>
+      <div class="card" style="padding:14px">
+        <p style="font-size:12px;color:var(--sub);margin-bottom:12px">Scarica il tuo foglio presenze mensile, pre-compilato con le ore dei tuoi rapportini.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Mese</label>
+            <select class="form-control" id="mie-presenze-mese">
+              <option value="1">Gennaio</option><option value="2">Febbraio</option>
+              <option value="3">Marzo</option><option value="4">Aprile</option>
+              <option value="5">Maggio</option><option value="6">Giugno</option>
+              <option value="7">Luglio</option><option value="8">Agosto</option>
+              <option value="9">Settembre</option><option value="10">Ottobre</option>
+              <option value="11">Novembre</option><option value="12">Dicembre</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Anno</label>
+            <input type="number" class="form-control" id="mie-presenze-anno" value="2026" min="2020" max="2035">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="generaPresenzeMie()" style="font-size:14px;padding:10px;width:100%">📋 Scarica mie presenze</button>
+      </div>
+    </div>
+
+    <!-- Admin: lista tecnici -->
+    <div id="admin-tech-section" style="display:none">
+      <p class="section-title" style="margin-top:16px">Tecnici</p>
+      <div class="card" id="admin-tech-list"></div>
+    </div>
+
+    <!-- Admin: Conteggio ore e presenze -->
+    <div id="ore-section" style="display:none;margin-top:16px">
+      <p class="section-title">⏱ Ore &amp; Presenze</p>
+      <div class="card" style="padding:14px;margin-bottom:10px">
+        <p style="font-size:13px;color:var(--sub);margin-bottom:12px">Riepilogo sintetico ore per cliente e tipo intervento.</p>
+        <button class="btn-sm primary" onclick="esportaOreExcel()" style="font-size:13px;padding:9px 16px">📊 Riepilogo ore (Excel)</button>
+      </div>
+      <div class="card" style="padding:14px">
+        <p style="font-size:14px;font-weight:700;margin-bottom:4px">📋 Report Presenze mensile</p>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:12px">Genera un foglio stile SENED per ciascun operaio, pre-compilato con le ore dei rapportini. I ragazzi aggiungono reperibilità, straordinari e ferie a mano.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Mese</label>
+            <select class="form-control" id="sened-mese">
+              <option value="1">Gennaio</option><option value="2">Febbraio</option>
+              <option value="3">Marzo</option><option value="4">Aprile</option>
+              <option value="5">Maggio</option><option value="6">Giugno</option>
+              <option value="7">Luglio</option><option value="8">Agosto</option>
+              <option value="9">Settembre</option><option value="10">Ottobre</option>
+              <option value="11">Novembre</option><option value="12">Dicembre</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Anno</label>
+            <input type="number" class="form-control" id="sened-anno" value="2026" min="2020" max="2035">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="generaReportSENED()" style="font-size:14px;padding:10px">📋 Genera presenze per tutti</button>
+      </div>
+    </div>
+
+    <div id="gcal-section" style="display:none;margin-top:16px">
+      <p class="section-title">🗓 Google Calendar</p>
+      <div class="card" style="padding:14px">
+        <div id="gcal-status" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px">
+          <span id="gcal-dot" style="width:10px;height:10px;border-radius:50%;background:#d1d5db;flex-shrink:0"></span>
+          <span id="gcal-label">Non connesso</span>
+          <button class="btn-sm primary" id="gcal-btn-connect" onclick="gcalConnect()" style="margin-left:auto">Connetti</button>
+          <button class="btn-sm" id="gcal-btn-disconnect" onclick="gcalDisconnect()" style="display:none">Disconnetti</button>
+        </div>
+        <div id="gcal-actions" style="display:none;margin-top:12px;display:none;gap:8px;flex-wrap:wrap">
+          <button class="btn-sm primary" onclick="gcalSyncAll()">⬆ Esporta tutto su Calendar</button>
+          <button class="btn-sm" onclick="gcalImport()">⬇ Importa da Calendar</button>
+          <span id="gcal-sync-info" style="font-size:11px;color:#6b7280;align-self:center"></span>
+        </div>
+        <div id="gcal-not-configured" style="font-size:12px;color:#9ca3af;margin-top:8px;display:none">
+          ⚙️ Configura le credenziali Google Cloud Console nell'app per abilitare la sync.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB AGENDA -->
+  <div id="tab-agenda" class="scroll-area" style="display:none">
+    <div class="date-strip" id="date-strip"></div>
+    <p class="section-title" id="agenda-title">Appuntamenti</p>
+    <div id="agenda-list"></div>
+  </div>
+
+  <!-- TAB NUOVO INTERVENTO -->
+  <div id="tab-intervento" class="scroll-area" style="display:none">
+    <p class="section-title">Intervento Extra</p>
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label">Tecnico</label>
+        <select class="form-control" id="int-tecnico"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cliente</label>
+        <select class="form-control" id="int-cliente"></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" class="form-control" id="int-data">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ora inizio</label>
+          <input type="time" class="form-control" id="int-ora" oninput="autoSetOraFine(this.value)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ora fine</label>
+          <input type="time" class="form-control" id="int-ora-fine">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo intervento</label>
+        <div class="chip-row" id="int-tipo-chips">
+          <div class="chip" data-val="INT. TECNICO" onclick="selectChip(this,'int-tipo-chips')">INT. TECNICO</div>
+          <div class="chip" data-val="ASS. TECNICA" onclick="selectChip(this,'int-tipo-chips')">ASS. TECNICA</div>
+          <div class="chip selected" data-val="MAN. ORDIN." onclick="selectChip(this,'int-tipo-chips')">MAN. ORDIN.</div>
+          <div class="chip" data-val="MAN. STRAORD." onclick="selectChip(this,'int-tipo-chips')">MAN. STRAORD.</div>
+          <div class="chip" data-val="REPERIBILITA'" onclick="selectChip(this,'int-tipo-chips')">REPERIBILITA'</div>
+          <div class="chip" data-val="PRESIDIO" onclick="selectChip(this,'int-tipo-chips')">PRESIDIO</div>
+          <div class="chip" data-val="TRASPORTO" onclick="selectChip(this,'int-tipo-chips')">TRASPORTO</div>
+          <div class="chip" data-val="SOPRALLUOGO" onclick="selectChip(this,'int-tipo-chips')">SOPRALLUOGO</div>
+          <div class="chip" data-val="CANTIERE" onclick="selectChip(this,'int-tipo-chips')">CANTIERE</div>
+        </div>
+      </div>
+      <!-- Ricorrenza -->
+      <div class="form-group" style="border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <label class="form-label" style="margin:0;font-size:13px">📅 Ricorrenza</label>
+          <button type="button" id="int-ricorrenza-btn" onclick="toggleRicorrenza()"
+            style="font-size:12px;padding:5px 12px;border-radius:20px;border:1.5px solid var(--border);background:#f8fafc;color:#64748b;cursor:pointer;font-weight:600;line-height:1.2">
+            + Attiva
+          </button>
+        </div>
+        <div id="int-ricorrenza-panel" style="display:none;margin-top:10px">
+          <p style="font-size:12px;color:var(--sub);margin-bottom:8px">Cadenza di ripetizione:</p>
+          <div class="chip-row" id="int-cadenza-chips" style="margin-bottom:12px">
+            <div class="chip" data-days="7"   onclick="selectChip(this,'int-cadenza-chips')">Settimanale</div>
+            <div class="chip" data-days="15"  onclick="selectChip(this,'int-cadenza-chips')">Quindicinale</div>
+            <div class="chip" data-months="1" onclick="selectChip(this,'int-cadenza-chips')">Mensile</div>
+            <div class="chip" data-months="2" onclick="selectChip(this,'int-cadenza-chips')">Bimestrale</div>
+            <div class="chip" data-months="3" onclick="selectChip(this,'int-cadenza-chips')">Trimestrale</div>
+            <div class="chip" data-months="4" onclick="selectChip(this,'int-cadenza-chips')">Quadrimestrale</div>
+            <div class="chip" data-months="6" onclick="selectChip(this,'int-cadenza-chips')">Semestrale</div>
+            <div class="chip" data-months="12" onclick="selectChip(this,'int-cadenza-chips')">Annuale</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="font-size:12px;color:var(--sub);white-space:nowrap">N° occorrenze:</label>
+            <input type="number" class="form-control" id="int-ricorrenza-n" value="6" min="2" max="52"
+              style="width:80px;padding:6px 10px;font-size:13px">
+          </div>
+        </div>
+      </div>
+
+      <!-- Squadra / Partecipanti -->
+      <div class="form-group" style="border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <label class="form-label" style="margin:0;font-size:13px">👥 Squadra / Partecipanti</label>
+          <button type="button" id="int-squadra-btn" onclick="toggleSquadra()"
+            style="font-size:12px;padding:5px 12px;border-radius:20px;border:1.5px solid var(--border);background:#f8fafc;color:#64748b;cursor:pointer;font-weight:600;line-height:1.2">
+            + Aggiungi
+          </button>
+        </div>
+        <div id="int-squadra-panel" style="display:none;margin-top:10px">
+          <p style="font-size:12px;color:var(--sub);margin-bottom:8px">L'intervento verrà duplicato anche per i tecnici selezionati:</p>
+          <div id="int-squadra-tecnici"></div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Note</label>
+        <textarea class="form-control" id="int-note" placeholder="Descrizione intervento..."></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="salvaIntervento()">💾 Salva Intervento</button>
+    </div>
+  </div>
+
+  <!-- TAB RAPPORTINO -->
+  <div id="tab-rapportino" class="scroll-area" style="display:none">
+    <p class="section-title">Rapportino d'Intervento</p>
+
+    <div class="rapportino-num">
+      <span>N° Rapportino</span>
+      <strong id="rapp-numero">MDA-2026-0001</strong>
+    </div>
+
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label">Tecnico</label>
+        <select class="form-control" id="rapp-tecnico"></select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" class="form-control" id="rapp-data">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ora inizio</label>
+          <input type="time" class="form-control" id="rapp-ora-inizio">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label class="form-label">Ora fine</label>
+          <input type="time" class="form-control" id="rapp-ora-fine">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ore lavorate</label>
+          <input type="text" class="form-control" id="rapp-ore" placeholder="es. 2.5">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label">Cliente</label>
+        <select class="form-control" id="rapp-cliente"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Indirizzo (se diverso)</label>
+        <input type="text" class="form-control" id="rapp-indirizzo" placeholder="Via...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo impianto</label>
+        <div class="chip-row" id="rapp-impianto-chips">
+          <div class="chip selected" data-val="Termoidraulico" onclick="selectChip(this,'rapp-impianto-chips')">Termoidraulico</div>
+          <div class="chip" data-val="Elettrico" onclick="selectChip(this,'rapp-impianto-chips')">Elettrico</div>
+          <div class="chip" data-val="Climatizzazione" onclick="selectChip(this,'rapp-impianto-chips')">Clima</div>
+          <div class="chip" data-val="Antincendio" onclick="selectChip(this,'rapp-impianto-chips')">Antincendio</div>
+          <div class="chip" data-val="Altro" onclick="selectChip(this,'rapp-impianto-chips')">Altro</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="form-group">
+        <label class="form-label">Tipo intervento</label>
+        <div class="chip-row" id="rapp-tipo-chips">
+          <div class="chip" data-val="INT. TECNICO" onclick="selectChip(this,'rapp-tipo-chips')">INT. TECNICO</div>
+          <div class="chip" data-val="ASS. TECNICA" onclick="selectChip(this,'rapp-tipo-chips')">ASS. TECNICA</div>
+          <div class="chip selected" data-val="MAN. ORDIN." onclick="selectChip(this,'rapp-tipo-chips')">MAN. ORDIN.</div>
+          <div class="chip" data-val="MAN. STRAORD." onclick="selectChip(this,'rapp-tipo-chips')">MAN. STRAORD.</div>
+          <div class="chip" data-val="REPERIBILITA'" onclick="selectChip(this,'rapp-tipo-chips')">REPERIBILITA'</div>
+          <div class="chip" data-val="PRESIDIO" onclick="selectChip(this,'rapp-tipo-chips')">PRESIDIO</div>
+          <div class="chip" data-val="TRASPORTO" onclick="selectChip(this,'rapp-tipo-chips')">TRASPORTO</div>
+          <div class="chip" data-val="SOPRALLUOGO" onclick="selectChip(this,'rapp-tipo-chips')">SOPRALLUOGO</div>
+          <div class="chip" data-val="CANTIERE" onclick="selectChip(this,'rapp-tipo-chips')">CANTIERE</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Lavori eseguiti</label>
+        <textarea class="form-control" id="rapp-lavori" rows="4" placeholder="Descrivi i lavori eseguiti..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Materiali utilizzati</label>
+        <textarea class="form-control" id="rapp-materiali" rows="2" placeholder="Elenco materiali..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prossima manutenzione prevista</label>
+        <input type="text" class="form-control" id="rapp-prossima" placeholder="es. 6 mesi / Gennaio 2027">
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="card-title">Firma Cliente</p>
+      <!-- Canvas attivo (per la firma) -->
+      <div id="firma-canvas-container">
+        <canvas id="signature-canvas"></canvas>
+        <div class="sign-label">Il cliente firma qui per accettazione dei lavori eseguiti</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
+          <button class="btn btn-secondary" onclick="clearSignature()" style="font-size:14px;padding:10px">🗑 Cancella</button>
+          <button class="btn btn-primary" onclick="bloccaFirma()" style="font-size:14px;padding:10px">🔒 Blocca firma</button>
+        </div>
+      </div>
+      <!-- Firma bloccata (immagine statica) -->
+      <div id="firma-bloccata-container" style="display:none">
+        <div style="border:2px solid #10b981;border-radius:8px;padding:4px;position:relative;background:#f0fdf4">
+          <img id="firma-bloccata-img" style="width:100%;display:block;border-radius:6px;max-height:120px;object-fit:contain">
+          <div style="position:absolute;top:8px;right:8px;background:#10b981;color:#fff;font-size:11px;padding:3px 8px;border-radius:12px;font-weight:700">✓ BLOCCATA</div>
+        </div>
+        <div class="sign-label" style="color:#10b981;font-weight:600">Firma acquisita e bloccata — non verrà modificata</div>
+        <button class="btn btn-secondary" onclick="sbloccaFirma()" style="font-size:13px;padding:8px;margin-top:10px;width:100%">✏️ Modifica firma</button>
+      </div>
+      <div class="form-group" style="margin-top:12px;margin-bottom:0">
+        <label class="form-label">Nome e Cognome firmatario</label>
+        <input type="text" class="form-control" id="rapp-firmatario" placeholder="Nome del cliente che firma">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Invia copia via email a:</label>
+      <input type="text" class="form-control" id="rapp-email" placeholder="email@cliente.it (opzionale)">
+    </div>
+
+    <button class="btn btn-primary" onclick="generaPDF()" style="margin-bottom:12px">📄 Genera e Scarica PDF</button>
+    <button class="btn btn-green" onclick="inviaPDF()" id="btn-invia-email" style="display:none">✉️ Invia via Email</button>
+    <div style="height:20px"></div>
+  </div>
+
+</div><!-- fine screen-main -->
+
+<!-- ─── BOTTOM NAV ──────────────────────────────────────── -->
+<nav id="bottom-nav" class="hidden">
+  <button class="nav-btn active" id="nav-home" onclick="showTab('home')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+    Home
+  </button>
+  <button class="nav-btn" id="nav-agenda" onclick="showTab('agenda')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+    </svg>
+    Agenda
+  </button>
+  <button class="nav-btn" id="nav-intervento" onclick="showTab('intervento')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+    </svg>
+    Intervento
+  </button>
+  <button class="nav-btn" id="nav-rapportino" onclick="showTab('rapportino')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+    </svg>
+    Rapportino
+  </button>
+</nav>
+
+<!-- ─── MODAL DETTAGLIO APPUNTAMENTO ──────────────────────── -->
+<div id="appt-modal-overlay" class="modal-overlay hidden" onclick="closeApptModal()">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div id="appt-modal-content"></div>
+  </div>
+</div>
+
+<!-- ─── TOAST ─────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   CONFIGURAZIONE
+═══════════════════════════════════════════════════════════ */
+const CONFIG = {
+  azienda: {
+    nome: 'MDA SOLUTIONS SRL',
+    telefono: '',
+    email: 'mdasolutions.operativo@gmail.com',
+    indirizzo: ''
+  },
+  tecnici: {
+    '1111': { id: 'matteo',  nome: 'Matteo Mare',     iniziali: 'MM', colore: '#3b82f6' },
+    '2222': { id: 'abramo',  nome: 'Abramo Bounine',   iniziali: 'AB', colore: '#10b981' },
+    '3333': { id: 'brigen',  nome: 'Brigen',           iniziali: 'BR', colore: '#f59e0b' },
+    '4444': { id: 'senny',   nome: 'Senny Fasil',      iniziali: 'SF', colore: '#8b5cf6' },
+    '5555': { id: 'teo',     nome: 'Teo',              iniziali: 'TE', colore: '#ef4444' },
+    '0000': { id: 'admin',   nome: 'Marco De Cesare',  iniziali: 'MC', colore: '#1e40af', isAdmin: true }
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   GOOGLE CALENDAR — CONFIGURAZIONE
+   Compilare dopo il setup su Google Cloud Console
+═══════════════════════════════════════════════════════════ */
+const GCAL = {
+  CLIENT_ID:      '1090743587627-v9rq3ainmhej93tle0to61kqqfd2j3ve.apps.googleusercontent.com',
+  API_KEY:        '',
+  SCOPES:         'https://www.googleapis.com/auth/calendar',
+  DISCOVERY_DOC:  'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
+  CALENDARS: {
+    matteo: 'bbd2befb931d279728303622db5db4ca59cba1e343ffadfdb30c31ff5afb2d5f@group.calendar.google.com',
+    abramo: '23600dab2b611ac0c6d04881d7bff6e9a6c9660a24969d67de955caf9ad6ee3f@group.calendar.google.com',
+    brigen: 'd13875def2684b17d689364e6bf2bf2b7c0e013b163e4203e24bcdeb77262891@group.calendar.google.com',
+    senny:  'e712e9fbb7daff07ee1bfb56cbdb1942bec5afda2167dc688b51782a4468cef1@group.calendar.google.com',
+    teo:    'f3f3de0f29df7605a6a14b2b0a9cf95427b00fa9d7d7c7e29ee9ea2e66ae6461@group.calendar.google.com',
+  }
+};
+
+// Clienti reali MDA Solutions (53 commesse attive)
+let CLIENTI = JSON.parse(localStorage.getItem('mda_clienti') || JSON.stringify([
+  { id: 'M107', codice: 'M 107', nome: "Condominio Via Olona 8", indirizzo: "Via Olona 8, 20097 San Donato Milanese (MI)" },
+  { id: 'M113', codice: 'M 113', nome: "Condominio Via Dossetti 1/3", indirizzo: "Via Dossetti 1/3, 20097 San Donato Milanese (MI)" },
+  { id: 'M123', codice: 'M 123', nome: "Condominio Via Risorgimento", indirizzo: "Via Risorgimento, 20098 San Giuliano Milanese (MI)" },
+  { id: 'M135', codice: 'M 135', nome: "Condominio Alboreto", indirizzo: "Via Alboreto, 20089 Rozzano (MI)" },
+  { id: 'M141', codice: 'M 141', nome: "Asilo Via Dezza", indirizzo: "Via Dezza, 20144 Milano (MI)" },
+  { id: 'M160', codice: 'M 160', nome: "Parrocchia San Donato", indirizzo: "Via Trento, 6, 20097 San Donato Milanese (MI)" },
+  { id: 'M164', codice: 'M 164', nome: "Condominio Mairano", indirizzo: "Via Padre Ladie, Mairano (MI)" },
+  { id: 'M174', codice: 'M 174', nome: "Teddy Group - Via Torino", indirizzo: "Via Torino, 20097 San Donato Milanese (MI)" },
+  { id: 'M178', codice: 'M 178', nome: "Condominio Residenziale Leonardo", indirizzo: "Via Di Vittorio 1, 20060 Mediglia (MI)" },
+  { id: 'M183', codice: 'M 183', nome: "Immobiliare Triveneta", indirizzo: "Piazza SS. Trinità, 20154 Milano (MI)" },
+  { id: 'M193', codice: 'M 193', nome: "Roland Berger - Via Gioia 8", indirizzo: "Via Melchiorre Gioia, 8, Milano (MI)" },
+  { id: 'M199', codice: 'M 199', nome: "Condominio Via Monviso 32", indirizzo: "Via Monviso 32, 20100 Milano (MI)" },
+  { id: 'M208', codice: 'M 208', nome: "KFI Binasco", indirizzo: "Via delle Scienze, 19-21, 20082 Binasco (MI)" },
+  { id: 'M224', codice: 'M 224', nome: "Condominio I Glicini", indirizzo: "Via Calvino 3, 20098 San Giuliano Milanese (MI)" },
+  { id: 'M234', codice: 'M 234', nome: "Parrocchia Rosate Milanese", indirizzo: "Viale Rimembranze, 28, 20088 Rosate (MI)" },
+  { id: 'M241', codice: 'M 241', nome: "Condominio Via Mecenate 115", indirizzo: "Via Mecenate 115, 20138 Milano (MI)" },
+  { id: 'M242', codice: 'M 242', nome: "Cenacolo Vinciano", indirizzo: "Piazza Santa Maria delle Grazie, 2, 20123 Milano (MI)" },
+  { id: 'M271', codice: 'M 271', nome: "Complesso Serpenthouse", indirizzo: "Via Gorky 20, 20098 San Giuliano Milanese (MI)" },
+  { id: 'M290', codice: 'M 290', nome: "Condominio Giotto", indirizzo: "Via Lenin 42, 20067 Paullo (MI)" },
+  { id: 'M355', codice: 'M 355', nome: "Palazzine Uffici La Marinella", indirizzo: "Via I. Maggio, 4, 20068 Peschiera Borromeo (MI)" },
+  { id: 'M476', codice: 'M 476', nome: "Abbazia di Viboldone", indirizzo: "Via dell'Abbazia 2-6, 20098 San Giuliano Milanese (MI)" },
+  { id: 'M500', codice: 'M 500', nome: "Condominio Via Trieste 4B", indirizzo: "Via Trieste 4B, 20097 San Donato Milanese (MI)" },
+  { id: 'M501', codice: 'M 501', nome: "Condominio I Glicini 2", indirizzo: "Via Calvino 1, 20098 San Giuliano Milanese (MI)" },
+  { id: 'M502', codice: 'M 502', nome: "Trefor Club", indirizzo: "Via Triulziana 4, 20097 San Donato Milanese (MI)" },
+  { id: 'M505', codice: 'M 505', nome: "Supercondominio Cittadella", indirizzo: "Via Angelo Moro 2/22, 20097 San Donato Milanese (MI)" },
+  { id: 'M506', codice: 'M 506', nome: "Supercondominio San Bovio", indirizzo: "Via I Maggio 4/a, 20068 Peschiera Borromeo (MI)" },
+  { id: 'M509', codice: 'M 509', nome: "Revo Insurance - Via Monterosa", indirizzo: "Via Monterosa 91, 20097 San Donato Milanese (MI)" },
+  { id: 'M510', codice: 'M 510', nome: "Condominio Via Fallaci", indirizzo: "Via Fallaci, 20097 San Donato Milanese (MI)" },
+  { id: 'M517', codice: 'M 517', nome: "Merlata Bloom - Terranova", indirizzo: "Via Gallaratese 14, 20151 Milano (MI)" },
+  { id: 'M518', codice: 'M 518', nome: "Merlata Bloom - Calliope", indirizzo: "Via Gallaratese 14, 20151 Milano (MI)" },
+  { id: 'M519', codice: 'M 519', nome: "Calliope Busto Arsizio", indirizzo: "Via Fratelli Bandiera, 21052 Busto Arsizio (VA)" },
+  { id: 'M520', codice: 'M 520', nome: "Terranova Busnago", indirizzo: "Via Como 42, 20874 Busnago (MB)" },
+  { id: 'M521', codice: 'M 521', nome: "Terranova Curno", indirizzo: "Viale delle Industrie, 24035 Curno (BG)" },
+  { id: 'M522', codice: 'M 522', nome: "Calliope Stezzano", indirizzo: "Via Padergnone, 24040 Stezzano (BG)" },
+  { id: 'M524', codice: 'M 524', nome: "Condominio Gemini Paullo", indirizzo: "Via Amatore Sciesa 22/B, 20067 Paullo (MI)" },
+  { id: 'M525', codice: 'M 525', nome: "Supercondominio Paullo", indirizzo: "Via Amatore Sciesa 22, 20067 Paullo (MI)" },
+  { id: 'M526', codice: 'M 526', nome: "Condominio Torre Paullo", indirizzo: "Via Amatore Sciesa 22/A, 20067 Paullo (MI)" },
+  { id: 'M528', codice: 'M 528', nome: "Terranova Stezzano", indirizzo: "Via Padergnone, 24040 Stezzano (BG)" },
+  { id: 'M529', codice: 'M 529', nome: "Merlata Bloom - Store Rinascimento", indirizzo: "Via Gallaratese 14, 20151 Milano (MI)" },
+  { id: 'M530', codice: 'M 530', nome: "Calliope Curno", indirizzo: "Viale delle Industrie, 24035 Curno (BG)" },
+  { id: 'M531', codice: 'M 531', nome: "Store Rinascimento Stezzano", indirizzo: "Via Padergnone, 24040 Stezzano (BG)" },
+  { id: 'M532', codice: 'M 532', nome: "Condominio Lupetta", indirizzo: "Via Torino, 20097 San Donato Milanese (MI)" },
+  { id: 'M533', codice: 'M 533', nome: "Dedalus Sala CED", indirizzo: "Piazza Santissima Trinità 6, 20154 Milano (MI)" },
+  { id: 'M534', codice: 'M 534', nome: "Calliope Centro Sarca - Sesto SG", indirizzo: "Via Milanese 1, 20099 Sesto San Giovanni (MI)" },
+  { id: 'M535', codice: 'M 535', nome: "Atelier Beccaria Brera", indirizzo: "Via Formentini 1, Milano (MI)" },
+  { id: 'M536', codice: 'M 536', nome: "Asilo Via Monterosa 91", indirizzo: "Via Monterosa 91, 20097 San Donato Milanese (MI)" },
+  { id: 'M537', codice: 'M 537', nome: "Asilo San Vittore", indirizzo: "Via San Vittore 29, Milano (MI)" },
+  { id: 'M538', codice: 'M 538', nome: "Calliope Busnago", indirizzo: "Busnago (MB) - CLP (CALLIOPE)" },
+  { id: 'M539', codice: 'M 539', nome: "Teddy Magazzino Curno (Treviolo)", indirizzo: "Via Europa 2/G, Treviolo (BG)" },
+  { id: 'M540', codice: 'M 540', nome: "Calliope Pedrengo", indirizzo: "Pedrengo (BG) - CLP (CALLIOPE)" },
+  { id: 'M541', codice: 'M 541', nome: "Teddy Magazzino Busto Arsizio", indirizzo: "Viale Rossini 26, Busto Arsizio (VA)" },
+  { id: 'M542', codice: 'M 542', nome: "Terranova Orio al Serio", indirizzo: "Via Portico 71, Orio al Serio (BG)" },
+  { id: 'M543', codice: 'M 543', nome: "Teddy Magazzino Cernusco", indirizzo: "Via Albert Einstein, 20088 Cernusco sul Naviglio (MI)" }
+]));
+
+/* ═══════════════════════════════════════════════════════════
+   STATO
+═══════════════════════════════════════════════════════════ */
+let currentTech = null;
+let pinBuffer = '';
+let signaturePad = null;
+let _firmaBloccata = null; // data URL della firma bloccata
+let selectedDate = new Date();
+let rapportinoNum = parseInt(localStorage.getItem('mda_rapp_num') || '1');
+
+// Dati locali
+let appuntamenti = JSON.parse(localStorage.getItem('mda_appuntamenti') || '[]');
+let interventoExtra = JSON.parse(localStorage.getItem('mda_extra') || '[]');
+
+/* ═══════════════════════════════════════════════════════════
+   LOGIN — PIN
+═══════════════════════════════════════════════════════════ */
+function pinPress(digit) {
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += digit;
+  updatePinDots();
+  if (pinBuffer.length === 4) pinConfirm();
+}
+
+function pinDelete() {
+  pinBuffer = pinBuffer.slice(0, -1);
+  updatePinDots();
+  document.getElementById('pin-error').textContent = '';
+}
+
+function updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('dot-' + i).classList.toggle('filled', i < pinBuffer.length);
+  }
+}
+
+function pinConfirm() {
+  const tech = CONFIG.tecnici[pinBuffer];
+  if (tech) {
+    currentTech = tech;
+    pinBuffer = '';
+    updatePinDots();
+    document.getElementById('pin-error').textContent = '';
+    initMain();
+  } else {
+    document.getElementById('pin-error').textContent = 'PIN non valido. Riprova.';
+    pinBuffer = '';
+    updatePinDots();
+    setTimeout(() => { document.getElementById('pin-error').textContent = ''; }, 2000);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INIT SCHERMATA PRINCIPALE
+═══════════════════════════════════════════════════════════ */
+function initMain() {
+  document.getElementById('screen-login').classList.remove('active');
+  document.getElementById('screen-main').classList.add('active');
+  document.getElementById('bottom-nav').classList.remove('hidden');
+
+  // Header
+  const oggi = new Date();
+  document.getElementById('header-date').textContent = oggi.toLocaleDateString('it-IT', { weekday:'long', day:'numeric', month:'long' });
+  document.getElementById('header-name').textContent = currentTech.nome;
+
+  // Popola select tecnici
+  populateTecniciSelect('int-tecnico');
+  populateTecniciSelect('rapp-tecnico');
+
+  // Popola select clienti
+  populateClientiSelect('int-cliente');
+  populateClientiSelect('rapp-cliente');
+
+  // Data di default nei form
+  const dateStr = oggi.toISOString().split('T')[0];
+  document.getElementById('int-data').value = dateStr;
+  document.getElementById('rapp-data').value = dateStr;
+  const timeStr = oggi.toTimeString().slice(0,5);
+  document.getElementById('int-ora').value = timeStr;
+  document.getElementById('rapp-ora-inizio').value = timeStr;
+
+  // Numero rapportino
+  document.getElementById('rapp-numero').textContent = 'MDA-2026-' + String(rapportinoNum).padStart(4,'0');
+
+  // Admin visibility
+  if (currentTech.isAdmin) {
+    document.getElementById('admin-banner-home').style.display = 'flex';
+    document.getElementById('admin-tech-section').style.display = 'block';
+    document.getElementById('ore-section').style.display = 'block';
+    document.getElementById('gcal-section').style.display = 'block';
+    // Pre-seleziona mese/anno corrente per il report presenze
+    const _now = new Date();
+    document.getElementById('sened-mese').value = _now.getMonth() + 1;
+    document.getElementById('sened-anno').value = _now.getFullYear();
+    renderAdminTechList();
+    gcalCheckConfig();
+  }
+
+  // Non-admin: mostra sezione presenze personali
+  if (!currentTech.isAdmin) {
+    document.getElementById('presenze-section').style.display = 'block';
+    const _nowP = new Date();
+    document.getElementById('mie-presenze-mese').value = _nowP.getMonth() + 1;
+    document.getElementById('mie-presenze-anno').value = _nowP.getFullYear();
+  }
+
+  // Se non admin, preseleziona il tecnico nei form
+  if (!currentTech.isAdmin) {
+    const sel1 = document.getElementById('int-tecnico');
+    const sel2 = document.getElementById('rapp-tecnico');
+    for (let opt of sel1.options) if (opt.value === currentTech.id) { opt.selected = true; break; }
+    for (let opt of sel2.options) if (opt.value === currentTech.id) { opt.selected = true; break; }
+  }
+
+  // Inizializza firma
+  initSignaturePad();
+
+  showTab('home');
+}
+
+function populateTecniciSelect(selId) {
+  const sel = document.getElementById(selId);
+  sel.innerHTML = '';
+  if (currentTech.isAdmin) {
+    sel.innerHTML = '<option value="">— Seleziona tecnico —</option>';
+    Object.values(CONFIG.tecnici).filter(t => !t.isAdmin).forEach(t => {
+      sel.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
+    });
+  } else {
+    sel.innerHTML = `<option value="${currentTech.id}">${currentTech.nome}</option>`;
+  }
+}
+
+function populateClientiSelect(selId) {
+  const sel = document.getElementById(selId);
+  const sorted = [...CLIENTI].sort((a, b) => a.id.localeCompare(b.id));
+  sel.innerHTML = '<option value="">— Seleziona cliente —</option>' +
+    sorted.map(c => `<option value="${c.id}">[${c.codice || c.id}] ${c.nome}</option>`).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   NAVIGAZIONE TAB
+═══════════════════════════════════════════════════════════ */
+function showTab(tab) {
+  ['home','agenda','intervento','rapportino'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = 'none';
+    document.getElementById('nav-' + t).classList.remove('active');
+  });
+  document.getElementById('tab-' + tab).style.display = 'block';
+  document.getElementById('nav-' + tab).classList.add('active');
+
+  if (tab === 'home') renderHome();
+  if (tab === 'agenda') renderAgenda();
+  if (tab === 'rapportino') {
+    // Canvas è 0x0 se la tab non era visibile — ridimensiona dopo che il DOM è visibile
+    requestAnimationFrame(() => resizeCanvas());
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HOME
+═══════════════════════════════════════════════════════════ */
+function renderHome() {
+  const today = new Date().toISOString().split('T')[0];
+  const myId = currentTech.isAdmin ? null : currentTech.id;
+
+  const oggiAppts = getAllAppts().filter(a => {
+    return a.data === today && (myId === null || a.tecnico === myId);
+  });
+
+  // Settimana
+  const weekAppts = getAllAppts().filter(a => {
+    const d = new Date(a.data);
+    const now = new Date();
+    const start = new Date(now); start.setDate(now.getDate() - now.getDay() + 1);
+    const end = new Date(start); end.setDate(start.getDate() + 6);
+    return d >= start && d <= end && (myId === null || a.tecnico === myId);
+  });
+
+  document.getElementById('stat-today').textContent = oggiAppts.length;
+  document.getElementById('stat-week').textContent = weekAppts.length;
+
+  const list = document.getElementById('home-appt-list');
+  if (oggiAppts.length === 0) {
+    list.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <p>Nessun intervento programmato oggi</p>
+    </div>`;
+  } else {
+    list.innerHTML = oggiAppts.map(a => renderApptCard(a)).join('');
+  }
+}
+
+// Filtro tecnico per admin (null = tutti)
+let adminTechFilter = null;
+
+function renderAdminTechList() {
+  const el = document.getElementById('admin-tech-list');
+  el.innerHTML = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin).map(t => {
+    const today = new Date().toISOString().split('T')[0];
+    const countOggi = getAllAppts().filter(a => a.tecnico === t.id && a.data === today).length;
+    const countTot = getAllAppts().filter(a => a.tecnico === t.id).length;
+    const isSelected = adminTechFilter === t.id;
+    return `<div class="tech-row ${isSelected ? 'tech-row-selected' : ''}" onclick="filterByTech('${t.id}')" style="cursor:pointer">
+      <div class="tech-badge" style="background:${t.colore}">${t.iniziali}</div>
+      <div class="tech-info">
+        <div class="tech-name">${t.nome}</div>
+        <div class="tech-count">${countOggi} oggi · ${countTot} totali</div>
+      </div>
+      <div style="margin-left:auto;font-size:11px;color:var(--primary);font-weight:600">${isSelected ? '● filtrato' : '→'}</div>
+    </div>`;
+  }).join('') + `<div class="tech-row" onclick="filterByTech(null)" style="cursor:pointer;border-top:1px solid #e5e7eb;margin-top:4px">
+    <div class="tech-badge" style="background:#6b7280">ALL</div>
+    <div class="tech-info"><div class="tech-name" style="color:#6b7280">Tutti i tecnici</div></div>
+  </div>`;
+}
+
+function filterByTech(techId) {
+  adminTechFilter = techId;
+  showTab('agenda');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AGENDA
+═══════════════════════════════════════════════════════════ */
+function renderAgenda() {
+  renderDateStrip();
+  renderAgendaList();
+}
+
+function renderDateStrip() {
+  const strip = document.getElementById('date-strip');
+  const today = new Date();
+  const DAYS = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+  strip.innerHTML = '';
+
+  let todayChipIdx = 0;
+  for (let i = -60; i <= 60; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const isToday = i === 0;
+    const isSel = d.toISOString().split('T')[0] === selectedDate.toISOString().split('T')[0];
+    const chip = document.createElement('div');
+    chip.className = 'date-chip' + (isToday ? ' today' : '') + (isSel && !isToday ? ' selected' : '');
+    chip.innerHTML = `<span class="dow">${DAYS[d.getDay()]}</span><span class="dom">${d.getDate()}</span>`;
+    chip.onclick = () => { selectedDate = d; renderDateStrip(); renderAgendaList(); };
+    strip.appendChild(chip);
+    if (isToday) todayChipIdx = strip.children.length - 1;
+  }
+  // Scrolla per mostrare oggi con qualche giorno passato visibile a sinistra
+  setTimeout(() => {
+    const chip = strip.children[todayChipIdx];
+    if (chip) {
+      const offset = chip.offsetLeft - Math.min(80, strip.offsetWidth * 0.2);
+      strip.scrollLeft = Math.max(0, offset);
+    }
+  }, 60);
+}
+
+function renderAgendaList() {
+  const dateStr = selectedDate.toISOString().split('T')[0];
+  document.getElementById('agenda-title').textContent =
+    selectedDate.toLocaleDateString('it-IT', {weekday:'long', day:'numeric', month:'long'});
+
+  const list = document.getElementById('agenda-list');
+
+  if (currentTech.isAdmin) {
+    // ── Vista admin: Gantt/scheduler per tecnico ──────────────
+    list.innerHTML = renderSchedulerAdmin(dateStr);
+    return;
+  }
+
+  // ── Vista tecnico: lista semplice ─────────────────────────
+  const appts = getAllAppts().filter(a => a.data === dateStr && a.tecnico === currentTech.id);
+  if (appts.length === 0) {
+    list.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <p>Nessun intervento per questa data</p>
+    </div>`;
+  } else {
+    list.innerHTML = appts.sort((a,b) => (a.ora||'').localeCompare(b.ora||'')).map(a => renderApptCard(a)).join('');
+  }
+}
+
+function renderSchedulerAdmin(dateStr) {
+  const technicians = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin);
+  const allAppts = getAllAppts().filter(a => a.data === dateStr);
+
+  const H_START = 7, H_END = 19, H_TOTAL = H_END - H_START;
+
+  // ── Intestazione ore ────────────────────────────────────────
+  let timeHeader = '';
+  for (let h = H_START; h <= H_END; h++) {
+    timeHeader += `<div style="flex:1;text-align:center;font-size:10px;font-weight:700;color:#94a3b8;padding:5px 0;border-left:1px solid #e2e8f0;">${h}:00</div>`;
+  }
+
+  // ── Linee verticali di sfondo per ore ───────────────────────
+  let gridLines = '';
+  for (let h = 1; h <= H_TOTAL; h++) {
+    const pct = (h / H_TOTAL) * 100;
+    const isMid = (H_START + h) === 12 || (H_START + h) === 13; // ora di pranzo
+    gridLines += `<div style="position:absolute;left:${pct.toFixed(2)}%;top:0;bottom:0;width:1px;background:${isMid ? '#e2e8f0' : '#f1f5f9'};pointer-events:none;"></div>`;
+  }
+
+  // ── Righe per tecnico ───────────────────────────────────────
+  let rows = '';
+  for (const tech of technicians) {
+    const techAppts = allAppts.filter(a => a.tecnico === tech.id);
+
+    // Blocchi appuntamenti
+    let blocks = '';
+    for (const a of techAppts) {
+      const cliente = CLIENTI.find(c => c.id === a.clienteId) || { nome: a.clienteNome || '?' };
+      const [hh, mm] = (a.ora || '09:00').split(':').map(Number);
+      const startH = hh + mm / 60;
+      // Usa ora_fine se disponibile, altrimenti blocco di 1.5h
+      let duration = 1.5;
+      if (a.ora_fine) {
+        const [hf, mf] = a.ora_fine.split(':').map(Number);
+        duration = Math.max(0.5, (hf + mf / 60) - startH);
+      }
+      let left = ((startH - H_START) / H_TOTAL) * 100;
+      let width = (duration / H_TOTAL) * 100;
+      if (left < 0) { width += left; left = 0; }
+      if (left + width > 100) width = 100 - left;
+      if (width <= 0) continue;
+
+      const timeLabel = a.ora + (a.ora_fine ? '–' + a.ora_fine : '');
+      blocks += `<div onclick="event.stopPropagation();openApptModal('${a.id}')" style="
+          position:absolute;left:${left.toFixed(2)}%;width:${width.toFixed(2)}%;
+          top:5px;bottom:5px;background:${tech.colore};color:#fff;
+          border-radius:6px;padding:3px 7px;overflow:hidden;cursor:pointer;
+          box-shadow:0 1px 4px rgba(0,0,0,.22);opacity:${a.completato ? 0.45 : 1};
+          display:flex;flex-direction:column;justify-content:center;">
+        <div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3">${cliente.nome}</div>
+        <div style="font-size:10px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${timeLabel}${a.tipo_intervento ? ' · '+a.tipo_intervento : ''}</div>
+      </div>`;
+    }
+
+    rows += `
+      <div style="display:flex;border-bottom:1px solid #f1f5f9;min-height:58px;align-items:stretch;">
+        <div style="width:130px;flex-shrink:0;display:flex;align-items:center;padding:6px 8px;gap:7px;border-right:2px solid #e2e8f0;">
+          <div class="tech-badge" style="background:${tech.colore};width:28px;height:28px;font-size:10px;flex-shrink:0">${tech.iniziali}</div>
+          <span style="font-size:11px;font-weight:600;color:#334155;line-height:1.3">${tech.nome}</span>
+        </div>
+        <div style="flex:1;position:relative;min-height:58px;background:#fafafa;">
+          ${gridLines}
+          ${blocks || '<div style="position:absolute;inset:0;display:flex;align-items:center;padding-left:14px;"><span style="font-size:11px;color:#cbd5e1;font-style:italic;">–</span></div>'}
+        </div>
+      </div>`;
+  }
+
+  const totalAppts = allAppts.length;
+  return `
+    <div style="font-size:12px;color:var(--sub);margin-bottom:8px;text-align:right;padding-right:4px;">
+      ${totalAppts > 0 ? `${totalAppts} intervento${totalAppts !== 1 ? 'i' : ''} programmato${totalAppts !== 1 ? 'i' : ''}` : 'Nessun intervento'}
+    </div>
+    <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
+      <div style="min-width:820px;">
+        <div style="display:flex;border-bottom:2px solid #e2e8f0;">
+          <div style="width:130px;flex-shrink:0;padding:5px 8px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.7px;border-right:2px solid #e2e8f0;display:flex;align-items:center;">Tecnico</div>
+          <div style="flex:1;display:flex;">${timeHeader}</div>
+        </div>
+        ${rows}
+      </div>
+    </div>`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CARD APPUNTAMENTO
+═══════════════════════════════════════════════════════════ */
+function renderApptCard(a) {
+  const tech = Object.values(CONFIG.tecnici).find(t => t.id === a.tecnico);
+  const cliente = CLIENTI.find(c => c.id === a.clienteId) || { nome: a.clienteNome || 'Cliente', indirizzo: '' };
+  const isExtra = a.tipo === 'extra';
+  const indirizzo = cliente.indirizzo || '';
+  const hasDetail = !!(indirizzo || a.note);
+
+  return `<div class="appt-card ${isExtra?'extra':''} ${a.completato?'completed':''}" id="appt-${a.id}"
+      onclick="toggleApptDetail('${a.id}')" style="cursor:pointer;user-select:none">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
+      <div class="tech-badge" style="background:${tech?tech.colore:'#999'};width:32px;height:32px;font-size:11px">${tech?tech.iniziali:'?'}</div>
+      <div style="font-size:11px;color:var(--sub);font-weight:700">${a.ora||'--:--'}${a.ora_fine?'–'+a.ora_fine:''}</div>
+    </div>
+    <div class="appt-info" style="flex:1;min-width:0">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
+        <div style="min-width:0">
+          <div class="appt-client">${cliente.nome}</div>
+          <div class="appt-type">${a.tipo_intervento||'Manutenzione'} ${isExtra?'• Extra':''}</div>
+        </div>
+        <svg id="appt-arrow-${a.id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          style="width:18px;height:18px;flex-shrink:0;color:#94a3b8;transition:transform .2s;margin-top:3px">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <!-- Pannello espandibile -->
+      <div id="appt-detail-${a.id}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0">
+        ${indirizzo ? `<div style="font-size:12px;color:var(--sub);margin-bottom:8px;display:flex;align-items:flex-start;gap:5px">
+          <span style="flex-shrink:0">📍</span><span>${indirizzo}</span></div>` : ''}
+        ${a.note ? `<div style="font-size:12px;color:#475569;margin-bottom:10px;padding:8px 10px;background:#f1f5f9;border-radius:8px;border-left:3px solid var(--blue-light)">
+          <span style="font-weight:600;color:var(--sub);font-size:11px;text-transform:uppercase;letter-spacing:.3px">Note</span><br>${a.note}</div>` : ''}
+        <div class="appt-actions" onclick="event.stopPropagation()">
+          <button class="btn-sm ${a.completato?'success':'primary'}" onclick="toggleCompletato('${a.id}')">
+            ${a.completato ? '✓ Completato' : '○ Segna fatto'}
+          </button>
+          <button class="btn-sm amber" onclick="apriRapportinoDa('${a.id}')">📄 Rapportino</button>
+          <button class="btn-sm" onclick="openMaps('${a.id}')"
+            style="background:#10b981;color:#fff;border-color:#10b981">🧭 Naviga</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleApptDetail(id) {
+  const detail = document.getElementById('appt-detail-' + id);
+  const arrow  = document.getElementById('appt-arrow-' + id);
+  if (!detail) return;
+  const open = detail.style.display !== 'none';
+  detail.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+/* ── Modal dettaglio (usato dallo scheduler admin) ─────── */
+function openApptModal(id) {
+  const a = getAllAppts().find(x => x.id === id);
+  if (!a) return;
+  const tech    = Object.values(CONFIG.tecnici).find(t => t.id === a.tecnico);
+  const cliente = CLIENTI.find(c => c.id === a.clienteId) || { nome: a.clienteNome || 'Cliente', indirizzo: '' };
+  const indirizzo = cliente.indirizzo || '';
+  const timeRange = a.ora + (a.ora_fine ? ' → ' + a.ora_fine : '');
+
+  document.getElementById('appt-modal-content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <div class="tech-badge" style="background:${tech?tech.colore:'#999'};width:44px;height:44px;font-size:14px;flex-shrink:0">${tech?tech.iniziali:'?'}</div>
+      <div style="min-width:0">
+        <div style="font-size:17px;font-weight:800;color:#1e293b;line-height:1.2">${cliente.nome}</div>
+        <div style="font-size:13px;color:var(--sub);margin-top:2px">${tech?tech.nome:''}</div>
+        <div style="font-size:12px;color:#6366f1;font-weight:700;margin-top:3px">${a.tipo_intervento||''}</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f8fafc;border-radius:10px;margin-bottom:12px;font-size:13px;color:#334155">
+      <span>📅</span><strong>${a.data}</strong><span style="color:#94a3b8">·</span><span>⏱</span><strong>${timeRange}</strong>
+    </div>
+    ${indirizzo ? `<div style="font-size:13px;color:var(--sub);margin-bottom:12px;display:flex;align-items:flex-start;gap:6px;padding:10px 12px;background:#f8fafc;border-radius:10px">
+      <span style="flex-shrink:0">📍</span><span>${indirizzo}</span></div>` : ''}
+    ${a.note ? `<div style="font-size:13px;color:#475569;margin-bottom:14px;padding:10px 12px;background:#f1f5f9;border-radius:10px;border-left:3px solid var(--blue-light)">
+      <div style="font-weight:700;font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Note</div>
+      ${a.note}</div>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn-sm ${a.completato?'success':'primary'}" onclick="toggleCompletato('${a.id}');renderAgendaList();closeApptModal()">
+        ${a.completato ? '✓ Completato' : '○ Segna fatto'}
+      </button>
+      <button class="btn-sm amber" onclick="apriRapportinoDa('${a.id}');closeApptModal()">📄 Rapportino</button>
+      <button class="btn-sm" onclick="openMaps('${a.id}')" style="background:#10b981;color:#fff;border-color:#10b981">🧭 Naviga</button>
+    </div>`;
+
+  document.getElementById('appt-modal-overlay').classList.remove('hidden');
+}
+
+function closeApptModal() {
+  document.getElementById('appt-modal-overlay').classList.add('hidden');
+}
+
+/* ── Auto-imposta ora fine (+2h) quando si sceglie ora inizio ── */
+function autoSetOraFine(val) {
+  if (!val) return;
+  const fine = document.getElementById('int-ora-fine');
+  if (fine.value) return; // non sovrascrivere se già impostata
+  const [h, m] = val.split(':').map(Number);
+  const tot = h * 60 + m + 120; // +2 ore
+  const hh = String(Math.floor(tot / 60) % 24).padStart(2, '0');
+  const mm = String(tot % 60).padStart(2, '0');
+  fine.value = `${hh}:${mm}`;
+}
+
+function openMaps(id) {
+  const a = getAllAppts().find(x => x.id === id);
+  if (!a) return;
+  const cliente = CLIENTI.find(c => c.id === a.clienteId);
+  const address = cliente?.indirizzo || '';
+  if (address) {
+    // Indirizzo preciso in archivio → navigazione diretta
+    window.open('https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(address), '_blank');
+  } else {
+    // Fallback: cerca su Maps usando il nome del cliente (spesso è l'indirizzo o abbastanza preciso)
+    const query = a.clienteNome || cliente?.nome || '';
+    if (!query) { toast('Nessuna informazione sull\'indirizzo'); return; }
+    window.open('https://www.google.com/maps/search/' + encodeURIComponent(query), '_blank');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DATI APPUNTAMENTI
+═══════════════════════════════════════════════════════════ */
+function getAllAppts() {
+  return [...appuntamenti, ...interventoExtra];
+}
+
+function toggleCompletato(id) {
+  let found = appuntamenti.find(a => a.id === id);
+  if (found) { found.completato = !found.completato; saveAppuntamenti(); gcalPushAppt(found); }
+  found = interventoExtra.find(a => a.id === id);
+  if (found) { found.completato = !found.completato; saveExtra(); gcalPushAppt(found); }
+  renderHome();
+  renderAgendaList();
+}
+
+function apriRapportinoDa(id) {
+  const a = getAllAppts().find(x => x.id === id);
+  if (!a) return;
+  const cliente = CLIENTI.find(c => c.id === a.clienteId);
+  if (cliente) {
+    const sel = document.getElementById('rapp-cliente');
+    for (let opt of sel.options) if (opt.value === cliente.id) { opt.selected = true; break; }
+  }
+  document.getElementById('rapp-data').value = a.data;
+  if (a.ora) document.getElementById('rapp-ora-inizio').value = a.ora;
+  const tipoChips = document.getElementById('rapp-tipo-chips');
+  if (a.tipo_intervento) {
+    tipoChips.querySelectorAll('.chip').forEach(c => {
+      c.classList.toggle('selected', c.dataset.val === a.tipo_intervento);
+    });
+  }
+  showTab('rapportino');
+  toast('Dati copiati nel rapportino');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SALVA INTERVENTO EXTRA
+═══════════════════════════════════════════════════════════ */
+/* ── Toggle Ricorrenza ─────────────────────────────────── */
+function toggleRicorrenza() {
+  const panel = document.getElementById('int-ricorrenza-panel');
+  const btn   = document.getElementById('int-ricorrenza-btn');
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '+ Attiva' : '✕ Disattiva';
+  btn.style.color = isOpen ? '#64748b' : '#ef4444';
+  if (isOpen) document.querySelectorAll('#int-cadenza-chips .chip').forEach(c => c.classList.remove('selected'));
+}
+
+/* ── Toggle Squadra ────────────────────────────────────── */
+function toggleSquadra() {
+  const panel = document.getElementById('int-squadra-panel');
+  const btn   = document.getElementById('int-squadra-btn');
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '+ Aggiungi' : '✕ Rimuovi';
+  btn.style.color = isOpen ? '#64748b' : '#ef4444';
+  if (!isOpen) renderSquadraTecnici();
+}
+
+function renderSquadraTecnici() {
+  const mainTechId = document.getElementById('int-tecnico').value;
+  const container  = document.getElementById('int-squadra-tecnici');
+  const lista = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin);
+  container.innerHTML = lista.map(t => `
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+      border:1.5px solid ${t.id === mainTechId ? '#c7d2fe' : 'var(--border)'};
+      background:${t.id === mainTechId ? '#eef2ff' : '#fff'};
+      margin-bottom:8px;cursor:pointer;user-select:none;">
+      <input type="checkbox" value="${t.id}" ${t.id === mainTechId ? 'checked disabled' : ''}
+        style="width:18px;height:18px;cursor:pointer;accent-color:var(--blue-mid);">
+      <div class="tech-badge" style="background:${t.colore};width:28px;height:28px;font-size:10px;flex-shrink:0">${t.iniziali}</div>
+      <span style="font-size:14px;font-weight:600;color:#334155">${t.nome}</span>
+      ${t.id === mainTechId ? '<span style="font-size:11px;color:#6366f1;margin-left:auto">principale</span>' : ''}
+    </label>`).join('');
+}
+
+/* ── Salva Intervento (con ricorrenza e squadra) ───────── */
+function salvaIntervento() {
+  const tecnicoId = document.getElementById('int-tecnico').value;
+  const clienteId = document.getElementById('int-cliente').value;
+  const data      = document.getElementById('int-data').value;
+  const ora       = document.getElementById('int-ora').value;
+  const oraFine   = document.getElementById('int-ora-fine').value;
+  const tipoEl    = document.querySelector('#int-tipo-chips .chip.selected');
+  const note      = document.getElementById('int-note').value.trim();
+
+  if (!tecnicoId) { toast('Seleziona il tecnico'); return; }
+  if (!data || !ora) { toast('Inserisci data e ora'); return; }
+
+  // ── Tecnici coinvolti (principale + squadra) ──────────
+  const tecnicoIds = [tecnicoId];
+  const squadraPanel = document.getElementById('int-squadra-panel');
+  if (squadraPanel.style.display !== 'none') {
+    document.querySelectorAll('#int-squadra-tecnici input[type=checkbox]:checked').forEach(cb => {
+      if (!tecnicoIds.includes(cb.value)) tecnicoIds.push(cb.value);
+    });
+  }
+
+  // ── Date (ricorrenza) ─────────────────────────────────
+  const dates = [data];
+  const ricPanel  = document.getElementById('int-ricorrenza-panel');
+  const ricChipEl = document.querySelector('#int-cadenza-chips .chip.selected');
+  if (ricPanel.style.display !== 'none' && ricChipEl) {
+    const nOcc    = Math.max(2, parseInt(document.getElementById('int-ricorrenza-n').value) || 6);
+    const baseDays   = ricChipEl.dataset.days   ? parseInt(ricChipEl.dataset.days)   : 0;
+    const baseMonths = ricChipEl.dataset.months ? parseInt(ricChipEl.dataset.months) : 0;
+    for (let i = 1; i < nOcc; i++) {
+      const d = new Date(data);
+      if (baseDays)   d.setDate(d.getDate() + baseDays * i);
+      else            d.setMonth(d.getMonth() + baseMonths * i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+  }
+
+  // ── Crea appuntamenti (tecnico × data) ────────────────
+  let count = 0;
+  const tipoVal = tipoEl ? tipoEl.dataset.val : 'MAN. ORDIN.';
+  for (const tId of tecnicoIds) {
+    for (const d of dates) {
+      const intervento = {
+        id: 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        tecnico: tId,
+        clienteId,
+        data: d,
+        ora,
+        ora_fine: oraFine || '',
+        tipo_intervento: tipoVal,
+        note,
+        tipo: 'extra',
+        completato: false,
+        creato: new Date().toISOString()
+      };
+      interventoExtra.push(intervento);
+      gcalPushAppt(intervento);
+      count++;
+    }
+  }
+  saveExtra();
+
+  // ── Reset pannelli ────────────────────────────────────
+  ['int-ricorrenza-panel', 'int-squadra-panel'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  document.getElementById('int-ricorrenza-btn').textContent = '+ Attiva';
+  document.getElementById('int-ricorrenza-btn').style.color = '#64748b';
+  document.getElementById('int-squadra-btn').textContent = '+ Aggiungi';
+  document.getElementById('int-squadra-btn').style.color = '#64748b';
+  document.querySelectorAll('#int-cadenza-chips .chip').forEach(c => c.classList.remove('selected'));
+  document.getElementById('int-note').value = '';
+
+  const msg = count === 1
+    ? '✅ Intervento salvato!'
+    : `✅ ${count} interventi salvati (${dates.length} date × ${tecnicoIds.length} tecnico${tecnicoIds.length > 1 ? 'i' : ''})`;
+  toast(msg);
+  showTab('home');
+}
+
+function saveAppuntamenti() { localStorage.setItem('mda_appuntamenti', JSON.stringify(appuntamenti)); }
+function saveExtra() { localStorage.setItem('mda_extra', JSON.stringify(interventoExtra)); }
+
+async function saveAppuntamentiAndSync(appt) {
+  saveAppuntamenti();
+  if (appt) await gcalPushAppt(appt);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FIRMA
+═══════════════════════════════════════════════════════════ */
+function initSignaturePad() {
+  const canvas = document.getElementById('signature-canvas');
+  signaturePad = new SignaturePad(canvas, { backgroundColor: 'rgb(255,255,255)', penColor: '#1e293b' });
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+}
+
+function resizeCanvas() {
+  if (_firmaBloccata) return; // firma bloccata — non toccare il canvas
+  const canvas = document.getElementById('signature-canvas');
+  if (!canvas || canvas.offsetWidth === 0) return;
+  const ratio = Math.max(window.devicePixelRatio || 1, 1);
+  const data = signaturePad ? signaturePad.toDataURL() : null;
+  canvas.width = canvas.offsetWidth * ratio;
+  canvas.height = canvas.offsetHeight * ratio;
+  canvas.getContext('2d').scale(ratio, ratio);
+  if (signaturePad) {
+    signaturePad.clear();
+    if (data && data !== 'data:image/png;base64,') {
+      const img = new Image();
+      img.onload = () => canvas.getContext('2d').drawImage(img, 0, 0);
+      img.src = data;
+    }
+  }
+}
+
+function clearSignature() {
+  _firmaBloccata = null;
+  document.getElementById('firma-bloccata-container').style.display = 'none';
+  document.getElementById('firma-canvas-container').style.display = 'block';
+  signaturePad && signaturePad.clear();
+}
+
+function bloccaFirma() {
+  if (!signaturePad || signaturePad.isEmpty()) { toast('Il cliente deve prima firmare'); return; }
+  _firmaBloccata = signaturePad.toDataURL();
+  document.getElementById('firma-bloccata-img').src = _firmaBloccata;
+  document.getElementById('firma-canvas-container').style.display = 'none';
+  document.getElementById('firma-bloccata-container').style.display = 'block';
+  toast('✅ Firma bloccata');
+}
+
+function sbloccaFirma() {
+  _firmaBloccata = null;
+  document.getElementById('firma-bloccata-container').style.display = 'none';
+  document.getElementById('firma-canvas-container').style.display = 'block';
+  requestAnimationFrame(() => resizeCanvas());
+  toast('Firma sbloccata — il cliente può firmare di nuovo');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CHIP SELECTOR
+═══════════════════════════════════════════════════════════ */
+function selectChip(el, groupId) {
+  document.querySelectorAll('#' + groupId + ' .chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   GENERA PDF
+═══════════════════════════════════════════════════════════ */
+async function generaPDF() {
+  const { jsPDF } = window.jspdf;
+
+  // Raccolta dati
+  const tecnicoId = document.getElementById('rapp-tecnico').value;
+  const tecnico = Object.values(CONFIG.tecnici).find(t => t.id === tecnicoId);
+  const clienteId = document.getElementById('rapp-cliente').value;
+  const cliente = CLIENTI.find(c => c.id === clienteId);
+  const data = document.getElementById('rapp-data').value;
+  const oraInizio = document.getElementById('rapp-ora-inizio').value;
+  const oraFine = document.getElementById('rapp-ora-fine').value;
+  const ore = document.getElementById('rapp-ore').value;
+  const impiantoEl = document.querySelector('#rapp-impianto-chips .chip.selected');
+  const tipoEl = document.querySelector('#rapp-tipo-chips .chip.selected');
+  const lavori = document.getElementById('rapp-lavori').value;
+  const materiali = document.getElementById('rapp-materiali').value;
+  const prossima = document.getElementById('rapp-prossima').value;
+  const firmatario = document.getElementById('rapp-firmatario').value;
+  const indirizzo = document.getElementById('rapp-indirizzo').value;
+  const numRapp = document.getElementById('rapp-numero').textContent;
+
+  if (!lavori.trim()) { toast('Descrivi i lavori eseguiti'); return; }
+  if (!_firmaBloccata && signaturePad && signaturePad.isEmpty()) { toast('La firma del cliente è richiesta'); return; }
+
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const PW = 210; const PH = 297;
+  const M = 15; // margine
+  const CW = PW - M * 2; // content width
+  let y = M;
+
+  // ─── HEADER AZZURRO ───────────────────────────────────
+  doc.setFillColor(30, 64, 175);
+  doc.rect(0, 0, PW, 38, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(18); doc.setFont('helvetica', 'bold');
+  doc.text('MDA SOLUTIONS SRL', M, 16);
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.text('Servizi di Manutenzione Professionale', M, 23);
+  if (CONFIG.azienda.telefono) doc.text('Tel: ' + CONFIG.azienda.telefono, M, 29);
+  doc.text(CONFIG.azienda.email, M, CONFIG.azienda.telefono ? 35 : 29);
+
+  // Numero rapportino in alto a destra
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+  doc.text(numRapp, PW - M, 16, { align: 'right' });
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text('RAPPORTINO D\'INTERVENTO', PW - M, 22, { align: 'right' });
+
+  y = 46;
+
+  // ─── DATI PRINCIPALI ──────────────────────────────────
+  doc.setTextColor(30, 41, 59);
+
+  const drawBox = (title, x, bY, bW, bH) => {
+    doc.setFillColor(239, 246, 255);
+    doc.roundedRect(x, bY, bW, bH, 2, 2, 'F');
+    doc.setDrawColor(219, 234, 254);
+    doc.roundedRect(x, bY, bW, bH, 2, 2, 'S');
+    doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 116, 139);
+    doc.text(title.toUpperCase(), x + 3, bY + 5);
+  };
+
+  const dataFmt = data ? new Date(data + 'T12:00').toLocaleDateString('it-IT', {day:'2-digit',month:'long',year:'numeric'}) : '-';
+
+  // Riga 1: Data | Tecnico | Ore
+  const bw1 = (CW - 6) / 3;
+  drawBox('Data Intervento', M, y, bw1, 20);
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30,41,59);
+  doc.text(dataFmt, M + 3, y + 13);
+
+  drawBox('Tecnico', M + bw1 + 3, y, bw1, 20);
+  doc.text(tecnico ? tecnico.nome : '-', M + bw1 + 6, y + 13);
+
+  drawBox('Orario / Ore', M + (bw1 + 3) * 2, y, bw1, 20);
+  const orario = (oraInizio || '--:--') + (oraFine ? ' – ' + oraFine : '') + (ore ? ' (' + ore + 'h)' : '');
+  doc.setFontSize(10);
+  doc.text(orario, M + (bw1 + 3) * 2 + 3, y + 13);
+
+  y += 25;
+
+  // Riga 2: Cliente | Tipo Impianto
+  const bw2 = (CW - 3) / 2;
+  drawBox('Cliente', M, y, bw2, 20);
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30,41,59);
+  doc.text(cliente ? cliente.nome : '-', M + 3, y + 13, { maxWidth: bw2 - 6 });
+
+  drawBox('Tipo Impianto', M + bw2 + 3, y, bw2, 20);
+  doc.text(impiantoEl ? impiantoEl.dataset.val : '-', M + bw2 + 6, y + 13);
+
+  y += 25;
+
+  // Indirizzo
+  if (indirizzo || (cliente && cliente.indirizzo)) {
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139);
+    doc.text('Indirizzo: ' + (indirizzo || cliente.indirizzo), M, y);
+    y += 6;
+  }
+
+  // Tipo intervento badge
+  doc.setFillColor(219, 234, 254);
+  doc.roundedRect(M, y, 60, 8, 2, 2, 'F');
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(30,64,175);
+  doc.text((tipoEl ? tipoEl.dataset.val : 'Intervento').toUpperCase(), M + 3, y + 5.5);
+  y += 14;
+
+  // ─── LAVORI ──────────────────────────────────────────
+  const drawSection = (title, content, sy) => {
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    const lines = doc.splitTextToSize(content || '-', CW - 10);
+    const sh = Math.max(20, lines.length * 5 + 12);
+    doc.roundedRect(M, sy, CW, sh, 2, 2, 'FD');
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(100,116,139);
+    doc.text(title.toUpperCase(), M + 4, sy + 6);
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(30,41,59);
+    doc.text(lines, M + 4, sy + 12);
+    return sy + sh + 5;
+  };
+
+  y = drawSection('Lavori Eseguiti', lavori, y);
+  if (materiali.trim()) y = drawSection('Materiali Utilizzati', materiali, y);
+  if (prossima.trim()) y = drawSection('Prossima Manutenzione Prevista', prossima, y);
+
+  // ─── FIRMA ───────────────────────────────────────────
+  // Assicurarsi che ci sia spazio per la firma (min 60mm)
+  if (y > PH - 75) { doc.addPage(); y = M; }
+
+  doc.setDrawColor(226, 232, 240);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(M, y, CW, 55, 2, 2, 'FD');
+
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(100,116,139);
+  doc.text('FIRMA CLIENTE — accettazione lavori eseguiti', M + 4, y + 6);
+
+  // Aggiungi firma come immagine (usa la firma bloccata se disponibile)
+  const sigData = _firmaBloccata || signaturePad.toDataURL();
+  if (sigData && sigData.length > 100) {
+    doc.addImage(sigData, 'PNG', M + 4, y + 9, 80, 35);
+  }
+
+  // Riga firma a destra
+  doc.setDrawColor(30, 64, 175);
+  doc.line(M + CW - 80, y + 44, M + CW - 4, y + 44);
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139);
+  doc.text(firmatario || '(nome firmatario)', M + CW - 80, y + 50);
+
+  y += 60;
+
+  // ─── FOOTER ──────────────────────────────────────────
+  doc.setFontSize(7); doc.setTextColor(150,150,150);
+  doc.text('MDA SOLUTIONS SRL — Documento generato il ' + new Date().toLocaleString('it-IT'), PW/2, PH - 8, {align:'center'});
+  doc.setDrawColor(219,234,254);
+  doc.line(M, PH - 12, PW - M, PH - 12);
+
+  // Salva e scarica
+  const filename = `Rapportino_${numRapp}_${cliente ? cliente.nome.replace(/\s+/g,'_') : 'cliente'}.pdf`;
+  doc.save(filename);
+
+  // Incrementa numero rapportino
+  rapportinoNum++;
+  localStorage.setItem('mda_rapp_num', rapportinoNum);
+  document.getElementById('rapp-numero').textContent = 'MDA-2026-' + String(rapportinoNum).padStart(4,'0');
+
+  // Mostra bottone email se c'è un indirizzo
+  const emailEl = document.getElementById('rapp-email');
+  if (emailEl.value.trim()) {
+    document.getElementById('btn-invia-email').style.display = 'block';
+  }
+
+  toast('✅ PDF generato con successo!');
+
+  // Salva una copia nell'archivio locale
+  const rapp = {
+    id: 'r_' + Date.now(),
+    numero: numRapp - 1,
+    tecnico: tecnicoId,
+    cliente: clienteId,
+    data,
+    ore: parseFloat(ore) || 0,
+    tipo: tipoEl ? tipoEl.dataset.val : '-',
+    creato: new Date().toISOString()
+  };
+  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  archivio.push(rapp);
+  localStorage.setItem('mda_rapportini', JSON.stringify(archivio));
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INVIA EMAIL
+═══════════════════════════════════════════════════════════ */
+function inviaPDF() {
+  const email = document.getElementById('rapp-email').value.trim();
+  if (!email) { toast('Inserisci un indirizzo email'); return; }
+  const numRapp = document.getElementById('rapp-numero').textContent;
+  const subject = encodeURIComponent(`Rapportino intervento ${numRapp} - MDA Solutions SRL`);
+  const body = encodeURIComponent(
+    `Gentile Cliente,\n\nin allegato trova il rapportino di intervento ${numRapp}.\n\nCordiali saluti,\nMDA Solutions SRL`
+  );
+  window.open(`mailto:${email}?subject=${subject}&body=${body}`);
+  toast('Apertura client email...');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOGOUT
+═══════════════════════════════════════════════════════════ */
+function logout() {
+  currentTech = null;
+  adminTechFilter = null;
+  pinBuffer = '';
+  updatePinDots();
+  document.getElementById('screen-main').classList.remove('active');
+  document.getElementById('screen-login').classList.add('active');
+  document.getElementById('bottom-nav').classList.add('hidden');
+  document.getElementById('admin-banner-home').style.display = 'none';
+  document.getElementById('admin-tech-section').style.display = 'none';
+  document.getElementById('ore-section').style.display = 'none';
+  document.getElementById('gcal-section').style.display = 'none';
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   GOOGLE CALENDAR — INTEGRAZIONE
+   Usa fetch() diretto — nessuna dipendenza da gapi.client.calendar
+═══════════════════════════════════════════════════════════ */
+let _gapiReady = false, _gisReady = false, _gcalToken = null;
+let _tokenClient = null;
+const _GCAL_API = 'https://www.googleapis.com/calendar/v3/calendars';
+
+function gapiLoaded() {
+  // gapi.js caricato — usiamo solo gapi.load per compatibilità GIS
+  _gapiReady = true;
+  _gcalTryRestore();
+}
+
+function gisLoaded() {
+  if (!GCAL.CLIENT_ID) return;
+  _tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GCAL.CLIENT_ID,
+    scope: GCAL.SCOPES,
+    callback: (resp) => {
+      if (resp.error) { console.error('GCal auth error', resp); return; }
+      _gcalToken = resp.access_token;
+      const exp = Date.now() + (resp.expires_in - 60) * 1000;
+      localStorage.setItem('mda_gcal_tok', resp.access_token);
+      localStorage.setItem('mda_gcal_exp', exp);
+      gcalUpdateUI(true);
+      gcalImport();
+    }
+  });
+  _gisReady = true;
+  _gcalTryRestore();
+}
+
+function _gcalTryRestore() {
+  if (!_gapiReady || !_gisReady) return;
+  const tok = localStorage.getItem('mda_gcal_tok');
+  const exp = parseInt(localStorage.getItem('mda_gcal_exp') || '0');
+  if (tok && exp > Date.now()) {
+    _gcalToken = tok;
+    gcalUpdateUI(true);
+    gcalImport();
+  }
+}
+
+function gcalCheckConfig() {
+  const configured = !!GCAL.CLIENT_ID;
+  document.getElementById('gcal-not-configured').style.display = configured ? 'none' : 'block';
+  document.getElementById('gcal-btn-connect').style.display = configured ? '' : 'none';
+  if (!configured) gcalUpdateUI(false);
+}
+
+function gcalConnect() {
+  if (!GCAL.CLIENT_ID) { toast('GCal non configurato'); return; }
+  if (!_tokenClient) { toast('Libreria Google non caricata ancora, riprova tra un secondo'); return; }
+  _tokenClient.requestAccessToken({ prompt: _gcalToken ? '' : 'consent' });
+}
+
+function gcalDisconnect() {
+  if (_gcalToken) google.accounts.oauth2.revoke(_gcalToken, () => {});
+  _gcalToken = null;
+  localStorage.removeItem('mda_gcal_tok');
+  localStorage.removeItem('mda_gcal_exp');
+  gcalUpdateUI(false);
+  toast('Google Calendar disconnesso');
+}
+
+function gcalUpdateUI(connected) {
+  const dot   = document.getElementById('gcal-dot');
+  const label = document.getElementById('gcal-label');
+  const btnC  = document.getElementById('gcal-btn-connect');
+  const btnD  = document.getElementById('gcal-btn-disconnect');
+  const acts  = document.getElementById('gcal-actions');
+  if (!dot) return;
+  dot.style.background = connected ? '#10b981' : '#d1d5db';
+  label.textContent    = connected ? 'Connesso' : 'Non connesso';
+  btnC.style.display   = connected ? 'none' : '';
+  btnD.style.display   = connected ? '' : 'none';
+  acts.style.display   = connected ? 'flex' : 'none';
+}
+
+// Build a Google Calendar event from an appointment
+function _apptToEvent(appt) {
+  const c = CLIENTI.find(x => x.id === appt.clienteId) || { nome: appt.clienteNome || 'Cliente', codice: '', indirizzo: '' };
+  const t = Object.values(CONFIG.tecnici).find(x => x.id === appt.tecnico) || { nome: appt.tecnico };
+  const ora    = appt.ora     || '09:00';
+  const oraEnd = appt.oraFine || `${String(parseInt(ora)+2).padStart(2,'0')}:00`;
+  return {
+    summary: `[${c.codice||appt.tecnico.toUpperCase()}] ${c.nome}`,
+    description: [
+      `Tipo: ${appt.tipo_intervento || ''}`,
+      `Tecnico: ${t.nome}`,
+      appt.note ? `Note: ${appt.note}` : '',
+      appt.completato ? '✅ COMPLETATO' : '',
+      `[mda_id:${appt.id}]`
+    ].filter(Boolean).join('\n'),
+    location: c.indirizzo || '',
+    start: { dateTime: `${appt.data}T${ora}:00`, timeZone: 'Europe/Rome' },
+    end:   { dateTime: `${appt.data}T${oraEnd}:00`, timeZone: 'Europe/Rome' },
+    colorId: appt.completato ? '2' : '1'
+  };
+}
+
+// Push one appointment to Google Calendar (create or update) via fetch
+async function gcalPushAppt(appt) {
+  if (!_gcalToken || !appt || !appt.tecnico) return false;
+  const calId = GCAL.CALENDARS[appt.tecnico];
+  if (!calId) return false;
+  try {
+    const ev = _apptToEvent(appt);
+    const headers = { 'Authorization': `Bearer ${_gcalToken}`, 'Content-Type': 'application/json' };
+    const calEnc = encodeURIComponent(calId);
+    let res;
+    if (appt.gcalId) {
+      res = await fetch(`${_GCAL_API}/${calEnc}/events/${appt.gcalId}`, {
+        method: 'PUT', headers, body: JSON.stringify(ev)
+      });
+    } else {
+      res = await fetch(`${_GCAL_API}/${calEnc}/events`, {
+        method: 'POST', headers, body: JSON.stringify(ev)
+      });
+    }
+    const data = await res.json();
+    if (data.id) {
+      appt.gcalId = data.id;
+      if (interventoExtra.includes(appt)) saveExtra(); else saveAppuntamenti();
+      return true;
+    } else {
+      console.warn('GCal push error', data.error?.message || data);
+      return false;
+    }
+  } catch(e) {
+    console.warn('GCal push error', e);
+    return false;
+  }
+}
+
+// Export all local appointments that don't have a gcalId yet
+async function gcalSyncAll() {
+  if (!_gcalToken) { toast('Connetti prima Google Calendar'); return; }
+  const info = document.getElementById('gcal-sync-info');
+  info.textContent = 'Sincronizzazione...';
+  let ok = 0, err = 0;
+  for (const a of [...appuntamenti, ...interventoExtra]) {
+    if (!a.gcalId) {
+      const success = await gcalPushAppt(a);
+      if (success) ok++; else err++;
+    }
+  }
+  info.textContent = err ? `✓ ${ok} esportati · ⚠ ${err} errori` : `✓ ${ok} esportati`;
+  toast(err ? `⚠ ${err} errori — controlla la console` : `✅ ${ok} appuntamenti sincronizzati`);
+}
+
+// Import events from Google Calendar → app (last 7 days + next 60 days) via fetch
+async function gcalImport() {
+  if (!_gcalToken) return;
+  const timeMin = new Date(Date.now() - 7*86400000).toISOString();
+  const timeMax = new Date(Date.now() + 60*86400000).toISOString();
+  let imported = 0;
+  for (const [techId, calId] of Object.entries(GCAL.CALENDARS)) {
+    if (!calId) continue;
+    try {
+      const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '250' });
+      const res = await fetch(`${_GCAL_API}/${encodeURIComponent(calId)}/events?${params}`, {
+        headers: { 'Authorization': `Bearer ${_gcalToken}` }
+      });
+      const data = await res.json();
+      for (const ev of (data.items || [])) {
+        if (!ev.start?.dateTime) continue;
+        const alreadyById  = appuntamenti.find(a => a.gcalId === ev.id);
+        const mdaIdMatch   = ev.description?.match(/\[mda_id:([^\]]+)\]/);
+        const alreadyByTag = mdaIdMatch && appuntamenti.find(a => a.id === mdaIdMatch[1]);
+        if (alreadyById || alreadyByTag) {
+          if (alreadyById && !alreadyById.gcalId) { alreadyById.gcalId = ev.id; }
+          continue;
+        }
+        const dateStr = ev.start.dateTime.split('T')[0];
+        const timeStr = ev.start.dateTime.split('T')[1].slice(0,5);
+        const timeEnd = ev.end?.dateTime?.split('T')[1]?.slice(0,5) || '';
+        const clienteM = CLIENTI.find(c => ev.summary?.includes(c.nome) || ev.summary?.includes(c.codice||'XXX'));
+        appuntamenti.push({
+          id: 'gcal_' + ev.id,
+          gcalId: ev.id,
+          tecnico: techId,
+          data: dateStr,
+          ora: timeStr,
+          oraFine: timeEnd,
+          clienteId:   clienteM?.id   || '',
+          clienteNome: clienteM?.nome  || ev.summary || '',
+          tipo_intervento: '',
+          note: (ev.description || '').replace(/\[mda_id:[^\]]+\]/, '').trim(),
+          completato: ev.description?.includes('✅ COMPLETATO') || false,
+          source: 'gcal'
+        });
+        imported++;
+      }
+    } catch(e) { console.warn('GCal import error', techId, e); }
+  }
+  if (imported > 0) { saveAppuntamenti(); renderHome(); renderAgendaList(); toast(`⬇ ${imported} eventi importati da Calendar`); }
+  const info = document.getElementById('gcal-sync-info');
+  if (info) info.textContent = `Ultima sync: ${new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ESPORTA ORE IN EXCEL
+═══════════════════════════════════════════════════════════ */
+function esportaOreExcel() {
+  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  if (archivio.length === 0) { toast('Nessun rapportino trovato nell\'archivio'); return; }
+
+  // ── Foglio 1: Riepilogo per cliente × tipo ──────────────
+  const grouped = {};
+  for (const r of archivio) {
+    const cliente = CLIENTI.find(c => c.id === r.cliente);
+    const clienteNome = cliente ? cliente.nome : (r.cliente || 'Sconosciuto');
+    const tipo = (r.tipo || '');
+    const tipoKey = tipo.toLowerCase().includes('ordinaria') ? 'Manutenzione Ordinaria' : 'Intervento Extra';
+    const key = clienteNome + '||' + tipoKey;
+    if (!grouped[key]) grouped[key] = { cliente: clienteNome, tipo: tipoKey, ore: 0, num: 0 };
+    grouped[key].ore += (r.ore || 0);
+    grouped[key].num++;
+  }
+
+  const riepData = [['Cliente', 'Tipo Intervento', 'Ore Totali', 'N° Rapportini']];
+  const rows = Object.values(grouped).sort((a, b) => a.cliente.localeCompare(b.cliente) || a.tipo.localeCompare(b.tipo));
+  for (const row of rows) {
+    riepData.push([row.cliente, row.tipo, parseFloat(row.ore.toFixed(2)), row.num]);
+  }
+  const totOre = rows.reduce((s, r) => s + r.ore, 0);
+  const totNum = rows.reduce((s, r) => s + r.num, 0);
+  riepData.push(['', '', '', '']);
+  riepData.push(['TOTALE', '', parseFloat(totOre.toFixed(2)), totNum]);
+
+  const ws1 = XLSX.utils.aoa_to_sheet(riepData);
+  ws1['!cols'] = [{wch:38},{wch:24},{wch:14},{wch:16}];
+
+  // ── Foglio 2: Dettaglio rapportini ──────────────────────
+  const detData = [['N° Rapportino', 'Data', 'Tecnico', 'Cliente', 'Tipo Intervento', 'Ore']];
+  const sorted = [...archivio].sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+  for (const r of sorted) {
+    const cliente = CLIENTI.find(c => c.id === r.cliente);
+    const tecnico = Object.values(CONFIG.tecnici).find(t => t.id === r.tecnico);
+    detData.push([
+      'MDA-2026-' + String(r.numero || 0).padStart(4, '0'),
+      r.data || '',
+      tecnico?.nome || r.tecnico || '',
+      cliente?.nome || r.cliente || '',
+      r.tipo || '',
+      parseFloat((r.ore || 0).toFixed(2))
+    ]);
+  }
+
+  const ws2 = XLSX.utils.aoa_to_sheet(detData);
+  ws2['!cols'] = [{wch:16},{wch:12},{wch:15},{wch:38},{wch:26},{wch:8}];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'Riepilogo per Cliente');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Dettaglio Rapportini');
+
+  const filename = 'Ore_MDA_' + new Date().toISOString().split('T')[0] + '.xlsx';
+  XLSX.writeFile(wb, filename);
+  toast('✅ Excel ore scaricato');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REPORT PRESENZE SENED
+═══════════════════════════════════════════════════════════ */
+function generaReportSENED() {
+  const anno = parseInt(document.getElementById('sened-anno').value) || new Date().getFullYear();
+  const mese = parseInt(document.getElementById('sened-mese').value) || (new Date().getMonth() + 1);
+  if (!window.XLSX) { toast('Libreria Excel non caricata'); return; }
+
+  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  const MESI_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+                   'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const meseNome = MESI_IT[mese - 1];
+  const daysInMonth = new Date(anno, mese, 0).getDate();
+  const GG_SHORT = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+
+  // Ordina clienti per codice numerico
+  const senedClienti = [...CLIENTI].sort((a, b) => {
+    const na = parseInt((a.codice || a.id).replace(/\D/g,'')) || 0;
+    const nb = parseInt((b.codice || b.id).replace(/\D/g,'')) || 0;
+    return na - nb;
+  });
+
+  const wb = XLSX.utils.book_new();
+  const tecniciList = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin);
+
+  for (const tech of tecniciList) {
+    // Rapportini di questo tecnico per il mese scelto
+    const rappTech = archivio.filter(r => {
+      if (r.tecnico !== tech.id || !r.data) return false;
+      const [y, m] = r.data.split('-');
+      return +y === anno && +m === mese;
+    });
+
+    // hoursMap: clientId -> { giorno -> ore }
+    const hoursMap = {};
+    // extrasMap: etichetta -> { giorno -> ore }  (clienti non codificati)
+    const extrasMap = {};
+
+    for (const r of rappTech) {
+      const day = parseInt(r.data.split('-')[2]);
+      const ore = parseFloat(r.ore) || 0;
+      if (!ore || !day) continue;
+      const known = senedClienti.find(c => c.id === r.cliente);
+      if (known) {
+        if (!hoursMap[r.cliente]) hoursMap[r.cliente] = {};
+        hoursMap[r.cliente][day] = (hoursMap[r.cliente][day] || 0) + ore;
+      } else {
+        const c = CLIENTI.find(cl => cl.id === r.cliente);
+        const label = c ? c.nome.toUpperCase() : (r.tipo || 'ATTIVITA\' EXTRA');
+        if (!extrasMap[label]) extrasMap[label] = {};
+        extrasMap[label][day] = (extrasMap[label][day] || 0) + ore;
+      }
+    }
+
+    // Righe extra — minimo 5 righe vuote per attività manuali
+    const extraList = Object.entries(extrasMap).map(([name, days]) => ({ name, days }));
+    while (extraList.length < 5) extraList.push({ name: '', days: {} });
+
+    // ── Costruttori di riga ──────────────────────────────────
+    const N = 3 + daysInMonth + 1; // larghezza totale riga
+
+    function makeRow(codice, nome, daysData) {
+      const row = [codice, nome, ''];
+      let tot = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const v = (daysData && daysData[d]) ? daysData[d] : '';
+        row.push(v);
+        tot += parseFloat(v) || 0;
+      }
+      row.push(tot || '');
+      return row;
+    }
+
+    function emptyRow() { return new Array(N).fill(''); }
+
+    // ── Riga 1: intestazione aziendale ──────────────────────
+    const row1 = new Array(N).fill('');
+    row1[0] = 'MDA SOLUTIONS SRL';
+
+    // ── Riga 2: anno, mese, nome, cognome ───────────────────
+    const parts = (tech.nome || '').trim().split(/\s+/);
+    const firstName = parts[0] || '';
+    const lastName  = parts.slice(1).join(' ') || '';
+    const row2 = new Array(N).fill('');
+    row2[0] = anno;
+    row2[1] = meseNome.toUpperCase();
+    row2[4] = 'Nome';
+    row2[6] = firstName.toUpperCase();
+    row2[11] = 'Cognome';
+    row2[14] = lastName.toUpperCase();
+
+    // ── Riga 3: vuota ────────────────────────────────────────
+    const row3 = emptyRow();
+
+    // ── Riga 4: numeri dei giorni ────────────────────────────
+    const row4 = ['', 'LUOGO / CLIENTE', ''];
+    for (let d = 1; d <= daysInMonth; d++) row4.push(d);
+    row4.push('TOTALE ORE');
+
+    // ── Riga 5: giorni della settimana ───────────────────────
+    const row5 = ['', '', ''];
+    for (let d = 1; d <= daysInMonth; d++) {
+      row5.push(GG_SHORT[new Date(anno, mese - 1, d).getDay()]);
+    }
+    row5.push('');
+
+    // ── Riga 6–7: SEDE / MAGAZZINO (fisso) ───────────────────
+    const row6 = ['C', 'SEDE - MAGAZZINO', ''];
+    for (let i = 0; i <= daysInMonth; i++) row6.push('');
+    const row7 = makeRow('0', 'SEDE / MAGAZZINO', {});
+
+    // ── Righe clienti codificati ─────────────────────────────
+    const clientRows = senedClienti.map(c =>
+      makeRow((c.codice || c.id).toUpperCase(), c.nome.toUpperCase(), hoursMap[c.id])
+    );
+
+    // ── Righe extra (attività non codificate) ─────────────────
+    const extraRows = extraList.map(e => makeRow('', e.name, e.days));
+
+    // ── TOTALE GIORNALIERO ───────────────────────────────────
+    const totGioRow = ['', 'TOTALE GIORNALIERO', ''];
+    let grandTotal = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      let daySum = 0;
+      for (const c of senedClienti) daySum += ((hoursMap[c.id] || {})[d]) || 0;
+      for (const e of extraList)    daySum += ((e.days || {})[d]) || 0;
+      totGioRow.push(daySum || '');
+      grandTotal += daySum;
+    }
+    totGioRow.push(grandTotal || '');
+
+    // ── TOTALE ORE LAVORATE ──────────────────────────────────
+    const totOreLavRow = emptyRow();
+    totOreLavRow[3 + daysInMonth - 2] = 'TOTALE ORE LAVORATE';
+    totOreLavRow[3 + daysInMonth]     = grandTotal || '';
+
+    // ── Sezioni manuali ──────────────────────────────────────
+    const reperRow   = makeRow('', "REPERIBILITA'", null);
+    const straordRow = makeRow('', 'ORE DI STRAORDINARIO', null);
+    const ferieRow   = makeRow('', 'FERIE / PERMESSI', null);
+    const malattiaRow= makeRow('', 'MALATTIA', null);
+
+    // ── Assembla AOA ─────────────────────────────────────────
+    const aoa = [
+      row1,
+      row2,
+      row3,
+      row4,
+      row5,
+      row6,
+      row7,
+      ...clientRows,
+      ...extraRows,
+      totGioRow,
+      emptyRow(),
+      totOreLavRow,
+      emptyRow(),
+      reperRow,
+      emptyRow(),
+      straordRow,
+      emptyRow(),
+      ferieRow,
+      emptyRow(),
+      malattiaRow,
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Larghezze colonne
+    ws['!cols'] = [
+      { wch: 8 },                                  // A: codice
+      { wch: 50 },                                 // B: nome
+      { wch: 2 },                                  // C: separatore
+      ...Array(daysInMonth).fill({ wch: 5 }),      // giorni
+      { wch: 13 },                                 // TOTALE ORE
+    ];
+
+    // Altezze righe: cliente rows più alte, righe vuote strette
+    const rowHeights = [];
+    const headerRows = 7; // rows 0–6
+    for (let i = 0; i < aoa.length; i++) {
+      if (i < headerRows) rowHeights.push({ hpt: 18 });
+      else rowHeights.push({ hpt: 16 });
+    }
+    ws['!rows'] = rowHeights;
+
+    const sheetName = (tech.nome || tech.id).substring(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  }
+
+  XLSX.writeFile(wb, `Presenze_${meseNome}_${anno}.xlsx`);
+  toast(`✅ Report presenze ${meseNome} ${anno} scaricato`);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PRESENZE PERSONALI (singolo tecnico)
+═══════════════════════════════════════════════════════════ */
+function generaPresenzeMie() {
+  if (!currentTech || currentTech.isAdmin) { toast('Funzione disponibile per i tecnici'); return; }
+  const anno = parseInt(document.getElementById('mie-presenze-anno').value) || new Date().getFullYear();
+  const mese = parseInt(document.getElementById('mie-presenze-mese').value) || (new Date().getMonth() + 1);
+  if (!window.XLSX) { toast('Libreria Excel non caricata'); return; }
+
+  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  const MESI_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+                   'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const meseNome = MESI_IT[mese - 1];
+  const daysInMonth = new Date(anno, mese, 0).getDate();
+  const GG_SHORT = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+
+  const senedClienti = [...CLIENTI].sort((a, b) => {
+    const na = parseInt((a.codice || a.id).replace(/\D/g,'')) || 0;
+    const nb = parseInt((b.codice || b.id).replace(/\D/g,'')) || 0;
+    return na - nb;
+  });
+
+  const wb = XLSX.utils.book_new();
+  const tech = currentTech;
+
+  const rappTech = archivio.filter(r => {
+    if (r.tecnico !== tech.id || !r.data) return false;
+    const [y, m] = r.data.split('-');
+    return +y === anno && +m === mese;
+  });
+
+  const hoursMap = {};
+  const extrasMap = {};
+  for (const r of rappTech) {
+    const day = parseInt(r.data.split('-')[2]);
+    const ore = parseFloat(r.ore) || 0;
+    if (!ore || !day) continue;
+    const known = senedClienti.find(c => c.id === r.cliente);
+    if (known) {
+      if (!hoursMap[r.cliente]) hoursMap[r.cliente] = {};
+      hoursMap[r.cliente][day] = (hoursMap[r.cliente][day] || 0) + ore;
+    } else {
+      const c = CLIENTI.find(cl => cl.id === r.cliente);
+      const label = c ? c.nome.toUpperCase() : (r.tipo || 'ATTIVITA\' EXTRA');
+      if (!extrasMap[label]) extrasMap[label] = {};
+      extrasMap[label][day] = (extrasMap[label][day] || 0) + ore;
+    }
+  }
+
+  const extraList = Object.entries(extrasMap).map(([name, days]) => ({ name, days }));
+  while (extraList.length < 5) extraList.push({ name: '', days: {} });
+
+  const N = 3 + daysInMonth + 1;
+  function makeRow(codice, nome, daysData) {
+    const row = [codice, nome, ''];
+    let tot = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const v = (daysData && daysData[d]) ? daysData[d] : '';
+      row.push(v);
+      tot += parseFloat(v) || 0;
+    }
+    row.push(tot || '');
+    return row;
+  }
+  function emptyRow() { return new Array(N).fill(''); }
+
+  const parts = (tech.nome || '').trim().split(/\s+/);
+  const row1 = new Array(N).fill(''); row1[0] = 'MDA SOLUTIONS SRL';
+  const row2 = new Array(N).fill('');
+  row2[0] = anno; row2[1] = meseNome.toUpperCase();
+  row2[4] = 'Nome'; row2[6] = (parts[0]||'').toUpperCase();
+  row2[11] = 'Cognome'; row2[14] = parts.slice(1).join(' ').toUpperCase();
+  const row4 = ['', 'LUOGO / CLIENTE', ''];
+  for (let d = 1; d <= daysInMonth; d++) row4.push(d);
+  row4.push('TOTALE ORE');
+  const row5 = ['', '', ''];
+  for (let d = 1; d <= daysInMonth; d++) row5.push(GG_SHORT[new Date(anno, mese-1, d).getDay()]);
+  row5.push('');
+  const row6 = ['C', 'SEDE - MAGAZZINO', '']; for (let i = 0; i <= daysInMonth; i++) row6.push('');
+  const row7 = makeRow('0', 'SEDE / MAGAZZINO', {});
+  const clientRows = senedClienti.map(c => makeRow((c.codice||c.id).toUpperCase(), c.nome.toUpperCase(), hoursMap[c.id]));
+  const extraRows = extraList.map(e => makeRow('', e.name, e.days));
+
+  const totGioRow = ['', 'TOTALE GIORNALIERO', ''];
+  let grandTotal = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    let s = 0;
+    for (const c of senedClienti) s += ((hoursMap[c.id]||{})[d])||0;
+    for (const e of extraList) s += ((e.days||{})[d])||0;
+    totGioRow.push(s || ''); grandTotal += s;
+  }
+  totGioRow.push(grandTotal || '');
+  const totOreLavRow = emptyRow();
+  totOreLavRow[3 + daysInMonth - 2] = 'TOTALE ORE LAVORATE';
+  totOreLavRow[3 + daysInMonth] = grandTotal || '';
+
+  const aoa = [
+    row1, row2, emptyRow(), row4, row5, row6, row7,
+    ...clientRows, ...extraRows, totGioRow, emptyRow(), totOreLavRow, emptyRow(),
+    makeRow('', "REPERIBILITA'", null), emptyRow(),
+    makeRow('', 'ORE DI STRAORDINARIO', null), emptyRow(),
+    makeRow('', 'FERIE / PERMESSI', null), emptyRow(),
+    makeRow('', 'MALATTIA', null),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 8 }, { wch: 50 }, { wch: 2 }, ...Array(daysInMonth).fill({ wch: 5 }), { wch: 13 }];
+  XLSX.utils.book_append_sheet(wb, ws, tech.nome.substring(0, 31));
+
+  XLSX.writeFile(wb, `Presenze_${tech.nome}_${meseNome}_${anno}.xlsx`);
+  toast(`✅ Presenze ${meseNome} ${anno} scaricate`);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOAST
+═══════════════════════════════════════════════════════════ */
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DATI DEMO (rimovibili in produzione)
+═══════════════════════════════════════════════════════════ */
+function caricaDatiDemo() {
+  if (appuntamenti.length > 0) return; // non sovrascrivere dati reali
+  const oggi = new Date().toISOString().split('T')[0];
+  const domani = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  appuntamenti = [
+    { id: 'demo1', tecnico: 'matteo', clienteId: 'c1', data: oggi,   ora: '08:30', tipo_intervento: 'Manutenzione Ordinaria', note: 'Controllo caldaia condominiale', completato: false },
+    { id: 'demo2', tecnico: 'matteo', clienteId: 'c3', data: oggi,   ora: '14:00', tipo_intervento: 'Riparazione Guasto',     note: 'Perdita tubazione 2° piano', completato: false },
+    { id: 'demo3', tecnico: 'abramo', clienteId: 'c2', data: oggi,   ora: '09:00', tipo_intervento: 'Manutenzione Ordinaria', note: 'Manutenzione impianto idrico', completato: false },
+    { id: 'demo4', tecnico: 'teo',    clienteId: 'c4', data: domani, ora: '10:00', tipo_intervento: 'Collaudo',               note: 'Collaudo nuovo impianto', completato: false },
+    { id: 'demo5', tecnico: 'senny',  clienteId: 'c5', data: domani, ora: '15:30', tipo_intervento: 'Manutenzione Ordinaria', note: 'Manutenzione semestrale', completato: false },
+  ];
+  saveAppuntamenti();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PWA SERVICE WORKER (offline)
+═══════════════════════════════════════════════════════════ */
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'mda-v1';
+    const URLS = [
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/signature_pad/4.1.7/signature_pad.umd.min.js'
+    ];
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(URLS)).catch(()=>{}));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
+    self.addEventListener('fetch', e => {
+      e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => {
+        if (res.ok) { const c = res.clone(); caches.open(CACHE).then(cache => cache.put(e.request, c)); }
+        return res;
+      }).catch(() => caches.match(e.request))));
+    });
+  `;
+  const blob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl).catch(() => {});
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════ */
+caricaDatiDemo();
+</script>
+</body>
+</html>
