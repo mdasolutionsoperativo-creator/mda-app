@@ -430,6 +430,37 @@
       <div class="card" id="admin-tech-list"></div>
     </div>
 
+    <!-- Admin: Gestione Ferie -->
+    <div id="ferie-section" style="display:none;margin-top:16px">
+      <p class="section-title">🏖 Ferie / Assenze</p>
+      <div class="card" style="padding:14px;margin-bottom:10px">
+        <p style="font-size:12px;color:var(--sub);margin-bottom:12px">Inserisci i periodi di ferie o assenza dei tecnici. Durante il periodo indicato, il tecnico verrà segnalato come non disponibile.</p>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">Tecnico</label>
+          <select class="form-control" id="ferie-tecnico"></select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Dal</label>
+            <input type="date" class="form-control" id="ferie-dal">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Al</label>
+            <input type="date" class="form-control" id="ferie-al">
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label">Note (opzionale)</label>
+          <input type="text" class="form-control" id="ferie-note" placeholder="es. Ferie estive, Malattia…">
+        </div>
+        <button class="btn btn-primary" onclick="aggiungiFeria()" style="font-size:14px;padding:10px;width:100%">➕ Aggiungi periodo ferie</button>
+      </div>
+      <div class="card" style="padding:14px">
+        <p style="font-size:13px;font-weight:700;color:#334155;margin-bottom:10px">Periodi inseriti</p>
+        <div id="ferie-lista"></div>
+      </div>
+    </div>
+
     <!-- Admin: Conteggio ore e presenze -->
     <div id="ore-section" style="display:none;margin-top:16px">
       <p class="section-title">⏱ Ore &amp; Presenze</p>
@@ -853,6 +884,7 @@ let rapportinoNum = parseInt(localStorage.getItem('mda_rapp_num') || '1');
 // Dati locali
 let appuntamenti = JSON.parse(localStorage.getItem('mda_appuntamenti') || '[]');
 let interventoExtra = JSON.parse(localStorage.getItem('mda_extra') || '[]');
+let ferie = JSON.parse(localStorage.getItem('mda_ferie') || '[]');
 
 /* ═══════════════════════════════════════════════════════════
    LOGIN — PIN
@@ -928,6 +960,7 @@ function initMain() {
   if (currentTech.isAdmin) {
     document.getElementById('admin-banner-home').style.display = 'flex';
     document.getElementById('admin-tech-section').style.display = 'block';
+    document.getElementById('ferie-section').style.display = 'block';
     document.getElementById('ore-section').style.display = 'block';
     document.getElementById('gcal-section').style.display = 'block';
     // Pre-seleziona mese/anno corrente per il report presenze
@@ -936,6 +969,13 @@ function initMain() {
     document.getElementById('sened-anno').value = _now.getFullYear();
     renderAdminTechList();
     gcalCheckConfig();
+    // Popola select ferie
+    const ferieSelect = document.getElementById('ferie-tecnico');
+    ferieSelect.innerHTML = '<option value="">— Seleziona tecnico —</option>';
+    Object.values(CONFIG.tecnici).filter(t => !t.isAdmin).forEach(t => {
+      ferieSelect.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
+    });
+    renderFerieAdmin();
   }
 
   // Non-admin: mostra sezione presenze personali
@@ -1149,6 +1189,9 @@ function renderSchedulerAdmin(dateStr) {
   for (const tech of technicians) {
     const techAppts = allAppts.filter(a => a.tecnico === tech.id);
 
+    // Controlla ferie per questo tecnico in questa data
+    const feriaOggi = (ferie || []).find(f => f.tecnicoId === tech.id && dateStr >= f.dal && dateStr <= f.al);
+
     // Blocchi appuntamenti
     let blocks = '';
     for (const a of techAppts) {
@@ -1179,15 +1222,21 @@ function renderSchedulerAdmin(dateStr) {
       </div>`;
     }
 
+    const feriaLabel = feriaOggi
+      ? `<div style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(251,191,36,.13) 0,rgba(251,191,36,.13) 8px,transparent 8px,transparent 16px);pointer-events:none;z-index:0;border-radius:4px;"></div>
+         <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:#d97706;background:rgba(254,243,199,.9);padding:3px 10px;border-radius:20px;white-space:nowrap;z-index:2;border:1.5px solid #fbbf24;">🏖 FERIE</div>`
+      : '';
+
     rows += `
       <div style="display:flex;border-bottom:1px solid #f1f5f9;min-height:58px;align-items:stretch;">
-        <div style="width:130px;flex-shrink:0;display:flex;align-items:center;padding:6px 8px;gap:7px;border-right:2px solid #e2e8f0;">
+        <div style="width:130px;flex-shrink:0;display:flex;align-items:center;padding:6px 8px;gap:7px;border-right:2px solid #e2e8f0;${feriaOggi ? 'background:#fffbeb;' : ''}">
           <div class="tech-badge" style="background:${tech.colore};width:28px;height:28px;font-size:10px;flex-shrink:0">${tech.iniziali}</div>
-          <span style="font-size:11px;font-weight:600;color:#334155;line-height:1.3">${tech.nome}</span>
+          <span style="font-size:11px;font-weight:600;color:${feriaOggi ? '#d97706' : '#334155'};line-height:1.3">${tech.nome}${feriaOggi ? '<br><span style="font-size:9px;font-weight:600;color:#d97706">🏖 in ferie</span>' : ''}</span>
         </div>
-        <div style="flex:1;position:relative;min-height:58px;background:#fafafa;">
+        <div style="flex:1;position:relative;min-height:58px;background:${feriaOggi ? '#fffbeb' : '#fafafa'};">
           ${gridLines}
-          ${blocks || '<div style="position:absolute;inset:0;display:flex;align-items:center;padding-left:14px;"><span style="font-size:11px;color:#cbd5e1;font-style:italic;">–</span></div>'}
+          ${feriaLabel}
+          ${blocks || (!feriaOggi ? '<div style="position:absolute;inset:0;display:flex;align-items:center;padding-left:14px;"><span style="font-size:11px;color:#cbd5e1;font-style:italic;">–</span></div>' : '')}
         </div>
       </div>`;
   }
@@ -1295,6 +1344,8 @@ function openApptModal(id) {
       </button>
       <button class="btn-sm amber" onclick="apriRapportinoDa('${a.id}');closeApptModal()">📄 Rapportino</button>
       <button class="btn-sm" onclick="openMaps('${a.id}')" style="background:#10b981;color:#fff;border-color:#10b981">🧭 Naviga</button>
+      ${currentTech.isAdmin ? `<button class="btn-sm" onclick="editAppt('${a.id}');closeApptModal()" style="background:#6366f1;color:#fff;border-color:#6366f1">✏️ Modifica</button>
+      <button class="btn-sm" onclick="if(confirm('Eliminare questo intervento?'))deleteAppt('${a.id}');closeApptModal()" style="background:#ef4444;color:#fff;border-color:#ef4444">🗑 Elimina</button>` : ''}
     </div>`;
 
   document.getElementById('appt-modal-overlay').classList.remove('hidden');
@@ -1302,6 +1353,64 @@ function openApptModal(id) {
 
 function closeApptModal() {
   document.getElementById('appt-modal-overlay').classList.add('hidden');
+}
+
+/* ── Modifica appuntamento ─────────────────────────────────── */
+let editingApptId = null;
+
+function editAppt(id) {
+  const a = getAllAppts().find(x => x.id === id);
+  if (!a) return;
+
+  editingApptId = id;
+
+  // Pre-popola il form intervento
+  const techSel = document.getElementById('int-tecnico');
+  if (techSel) techSel.value = a.tecnico;
+
+  const clienteSel = document.getElementById('int-cliente');
+  if (clienteSel) clienteSel.value = a.clienteId || '';
+
+  const dataEl = document.getElementById('int-data');
+  if (dataEl) dataEl.value = a.data || '';
+
+  const oraEl = document.getElementById('int-ora');
+  if (oraEl) oraEl.value = a.ora || '';
+
+  const oraFineEl = document.getElementById('int-ora-fine');
+  if (oraFineEl) oraFineEl.value = a.ora_fine || '';
+
+  // Tipo intervento chip
+  document.querySelectorAll('#int-tipo-chips .chip').forEach(c => {
+    c.classList.toggle('selected', c.dataset.val === (a.tipo_intervento || 'MAN. ORDIN.'));
+  });
+
+  const noteEl = document.getElementById('int-note');
+  if (noteEl) noteEl.value = a.note || '';
+
+  // Nascondi pannelli ricorrenza/squadra e aggiorna UI pulsante salva
+  ['int-ricorrenza-panel', 'int-squadra-panel'].forEach(pid => {
+    const el = document.getElementById(pid);
+    if (el) el.style.display = 'none';
+  });
+  const saveBtn = document.querySelector('#tab-intervento .btn.btn-primary');
+  if (saveBtn) saveBtn.textContent = '💾 Aggiorna Intervento';
+
+  const titleEl = document.querySelector('#tab-intervento .section-title');
+  if (titleEl) titleEl.textContent = '✏️ Modifica Intervento';
+
+  showTab('intervento');
+  toast('Modifica intervento in corso…');
+}
+
+function deleteAppt(id) {
+  const idxE = interventoExtra.findIndex(a => a.id === id);
+  if (idxE !== -1) { interventoExtra.splice(idxE, 1); saveExtra(); }
+  const idxA = appuntamenti.findIndex(a => a.id === id);
+  if (idxA !== -1) { appuntamenti.splice(idxA, 1); saveAppuntamenti(); }
+  renderAgendaList();
+  renderHome();
+  toast('Intervento eliminato');
 }
 
 /* ── Auto-imposta ora fine (+2h) quando si sceglie ora inizio ── */
@@ -1411,6 +1520,25 @@ function renderSquadraTecnici() {
 }
 
 /* ── Salva Intervento (con ricorrenza e squadra) ───────── */
+function resetInterventoForm() {
+  ['int-ricorrenza-panel', 'int-squadra-panel'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  document.getElementById('int-ricorrenza-btn').textContent = '+ Attiva';
+  document.getElementById('int-ricorrenza-btn').style.color = '#64748b';
+  document.getElementById('int-squadra-btn').textContent = '+ Aggiungi';
+  document.getElementById('int-squadra-btn').style.color = '#64748b';
+  document.querySelectorAll('#int-cadenza-chips .chip').forEach(c => c.classList.remove('selected'));
+  document.getElementById('int-note').value = '';
+  // Ripristina titolo e bottone salva
+  const saveBtn = document.querySelector('#tab-intervento .btn.btn-primary');
+  if (saveBtn) saveBtn.textContent = '💾 Salva Intervento';
+  const titleEl = document.querySelector('#tab-intervento .section-title');
+  if (titleEl) titleEl.textContent = 'Intervento Extra';
+  editingApptId = null;
+}
+
 function salvaIntervento() {
   const tecnicoId = document.getElementById('int-tecnico').value;
   const clienteId = document.getElementById('int-cliente').value;
@@ -1422,6 +1550,44 @@ function salvaIntervento() {
 
   if (!tecnicoId) { toast('Seleziona il tecnico'); return; }
   if (!data || !ora) { toast('Inserisci data e ora'); return; }
+
+  const tipoVal = tipoEl ? tipoEl.dataset.val : 'MAN. ORDIN.';
+
+  // ── Controlla ferie tecnico ───────────────────────────
+  const ferieConflitto = (ferie || []).filter(f =>
+    f.tecnicoId === tecnicoId && data >= f.dal && data <= f.al
+  );
+  if (ferieConflitto.length > 0) {
+    const tech = Object.values(CONFIG.tecnici).find(t => t.id === tecnicoId);
+    const nome = tech ? tech.nome : 'Il tecnico';
+    toast(`⚠️ ${nome} è in ferie dal ${ferieConflitto[0].dal} al ${ferieConflitto[0].al}!`);
+    // Continua comunque — è solo un avviso
+  }
+
+  // ── MODALITÀ MODIFICA ─────────────────────────────────
+  if (editingApptId) {
+    let found = interventoExtra.find(a => a.id === editingApptId);
+    if (!found) found = appuntamenti.find(a => a.id === editingApptId);
+    if (found) {
+      found.tecnico = tecnicoId;
+      found.clienteId = clienteId;
+      found.data = data;
+      found.ora = ora;
+      found.ora_fine = oraFine || '';
+      found.tipo_intervento = tipoVal;
+      found.note = note;
+      // Salva nel giusto store
+      if (interventoExtra.find(a => a.id === editingApptId)) saveExtra();
+      else saveAppuntamenti();
+      gcalPushAppt(found);
+    }
+    resetInterventoForm();
+    toast('✅ Intervento aggiornato!');
+    renderAgendaList();
+    renderHome();
+    showTab('home');
+    return;
+  }
 
   // ── Tecnici coinvolti (principale + squadra) ──────────
   const tecnicoIds = [tecnicoId];
@@ -1450,7 +1616,6 @@ function salvaIntervento() {
 
   // ── Crea appuntamenti (tecnico × data) ────────────────
   let count = 0;
-  const tipoVal = tipoEl ? tipoEl.dataset.val : 'MAN. ORDIN.';
   for (const tId of tecnicoIds) {
     for (const d of dates) {
       const intervento = {
@@ -1473,17 +1638,7 @@ function salvaIntervento() {
   }
   saveExtra();
 
-  // ── Reset pannelli ────────────────────────────────────
-  ['int-ricorrenza-panel', 'int-squadra-panel'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
-  });
-  document.getElementById('int-ricorrenza-btn').textContent = '+ Attiva';
-  document.getElementById('int-ricorrenza-btn').style.color = '#64748b';
-  document.getElementById('int-squadra-btn').textContent = '+ Aggiungi';
-  document.getElementById('int-squadra-btn').style.color = '#64748b';
-  document.querySelectorAll('#int-cadenza-chips .chip').forEach(c => c.classList.remove('selected'));
-  document.getElementById('int-note').value = '';
+  resetInterventoForm();
 
   const msg = count === 1
     ? '✅ Intervento salvato!'
@@ -1494,6 +1649,68 @@ function salvaIntervento() {
 
 function saveAppuntamenti() { localStorage.setItem('mda_appuntamenti', JSON.stringify(appuntamenti)); }
 function saveExtra() { localStorage.setItem('mda_extra', JSON.stringify(interventoExtra)); }
+function saveFerie() { localStorage.setItem('mda_ferie', JSON.stringify(ferie)); }
+
+/* ══ Gestione Ferie ══════════════════════════════════════ */
+function aggiungiFeria() {
+  const tecnicoId = document.getElementById('ferie-tecnico').value;
+  const dal = document.getElementById('ferie-dal').value;
+  const al  = document.getElementById('ferie-al').value;
+  const note = (document.getElementById('ferie-note')?.value || '').trim();
+
+  if (!tecnicoId) { toast('Seleziona un tecnico'); return; }
+  if (!dal || !al) { toast('Inserisci date dal/al'); return; }
+  if (al < dal) { toast('La data finale deve essere >= di quella iniziale'); return; }
+
+  ferie.push({ id: 'f_' + Date.now(), tecnicoId, dal, al, note });
+  saveFerie();
+  renderFerieAdmin();
+  document.getElementById('ferie-dal').value = '';
+  document.getElementById('ferie-al').value = '';
+  if (document.getElementById('ferie-note')) document.getElementById('ferie-note').value = '';
+  toast('✅ Ferie aggiunto');
+}
+
+function eliminaFeria(id) {
+  ferie = ferie.filter(f => f.id !== id);
+  saveFerie();
+  renderFerieAdmin();
+  toast('Periodo ferie rimosso');
+}
+
+function renderFerieAdmin() {
+  const container = document.getElementById('ferie-lista');
+  if (!container) return;
+
+  if (ferie.length === 0) {
+    container.innerHTML = `<div style="font-size:13px;color:#94a3b8;text-align:center;padding:16px 0">Nessun periodo ferie inserito</div>`;
+    return;
+  }
+
+  // Ordina per data
+  const sorted = [...ferie].sort((a, b) => a.dal.localeCompare(b.dal));
+  const today = new Date().toISOString().split('T')[0];
+
+  container.innerHTML = sorted.map(f => {
+    const tech = Object.values(CONFIG.tecnici).find(t => t.id === f.tecnicoId);
+    const isActive = f.dal <= today && today <= f.al;
+    const isPast = f.al < today;
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+        border:1.5px solid ${isActive ? '#fbbf24' : isPast ? '#e2e8f0' : '#c7d2fe'};
+        background:${isActive ? '#fffbeb' : isPast ? '#f8fafc' : '#eef2ff'};margin-bottom:8px;">
+        <div class="tech-badge" style="background:${tech?tech.colore:'#999'};width:30px;height:30px;font-size:10px;flex-shrink:0">${tech?tech.iniziali:'?'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#1e293b">${tech?tech.nome:'Tecnico'}</div>
+          <div style="font-size:12px;color:#6366f1;font-weight:600">📅 ${f.dal} → ${f.al}</div>
+          ${f.note ? `<div style="font-size:11px;color:#64748b;margin-top:2px">${f.note}</div>` : ''}
+        </div>
+        ${isActive ? '<span style="font-size:10px;font-weight:700;color:#d97706;background:#fef3c7;padding:2px 7px;border-radius:20px;flex-shrink:0">IN CORSO</span>' : ''}
+        ${isPast ? '<span style="font-size:10px;font-weight:700;color:#94a3b8;background:#f1f5f9;padding:2px 7px;border-radius:20px;flex-shrink:0">PASSATO</span>' : ''}
+        <button onclick="eliminaFeria('${f.id}')" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:18px;padding:0 4px;flex-shrink:0">×</button>
+      </div>`;
+  }).join('');
+}
 
 async function saveAppuntamentiAndSync(appt) {
   saveAppuntamenti();
@@ -1780,6 +1997,7 @@ function logout() {
   document.getElementById('bottom-nav').classList.add('hidden');
   document.getElementById('admin-banner-home').style.display = 'none';
   document.getElementById('admin-tech-section').style.display = 'none';
+  document.getElementById('ferie-section').style.display = 'none';
   document.getElementById('ore-section').style.display = 'none';
   document.getElementById('gcal-section').style.display = 'none';
 }
