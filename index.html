@@ -653,9 +653,15 @@
         <label class="form-label">Cliente</label>
         <select class="form-control" id="rapp-cliente"></select>
       </div>
-      <div class="form-group">
-        <label class="form-label">Indirizzo (se diverso)</label>
-        <input type="text" class="form-control" id="rapp-indirizzo" placeholder="Via...">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group">
+          <label class="form-label">Commessa / N° Ordine</label>
+          <input type="text" class="form-control" id="rapp-commessa" placeholder="es. C-2026-042">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Indirizzo (se diverso)</label>
+          <input type="text" class="form-control" id="rapp-indirizzo" placeholder="Via...">
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Tipo impianto</label>
@@ -1460,21 +1466,57 @@ function toggleCompletato(id) {
 function apriRapportinoDa(id) {
   const a = getAllAppts().find(x => x.id === id);
   if (!a) return;
-  const cliente = CLIENTI.find(c => c.id === a.clienteId);
-  if (cliente) {
-    const sel = document.getElementById('rapp-cliente');
-    for (let opt of sel.options) if (opt.value === cliente.id) { opt.selected = true; break; }
+
+  showTab('rapportino');
+
+  // Tecnico: se admin apre rapportino di un altro tecnico, imposta quel tecnico
+  if (currentTech.isAdmin && a.tecnico) {
+    const techSel = document.getElementById('rapp-tecnico');
+    if (techSel) techSel.value = a.tecnico;
   }
+
+  // Cliente: cerca per ID, fallback per nome
+  const clienteSel = document.getElementById('rapp-cliente');
+  if (clienteSel) {
+    if (a.clienteId) {
+      clienteSel.value = a.clienteId;
+    }
+    // Se il valore non è stato impostato (ID non trovato nella select), cerca per nome
+    if (!clienteSel.value && a.clienteNome) {
+      for (let opt of clienteSel.options) {
+        if (opt.textContent.toLowerCase().includes(a.clienteNome.toLowerCase())) {
+          clienteSel.value = opt.value;
+          break;
+        }
+      }
+    }
+  }
+
+  // Indirizzo dal cliente
+  const cliente = CLIENTI.find(c => c.id === a.clienteId);
+  if (cliente && cliente.indirizzo) {
+    const indirizzoEl = document.getElementById('rapp-indirizzo');
+    if (indirizzoEl && !indirizzoEl.value) indirizzoEl.value = cliente.indirizzo;
+  }
+
   document.getElementById('rapp-data').value = a.data;
   if (a.ora) document.getElementById('rapp-ora-inizio').value = a.ora;
-  const tipoChips = document.getElementById('rapp-tipo-chips');
+  if (a.ora_fine) document.getElementById('rapp-ora-fine').value = a.ora_fine;
+
+  // Commessa
+  if (a.commessa) {
+    const commessaEl = document.getElementById('rapp-commessa');
+    if (commessaEl) commessaEl.value = a.commessa;
+  }
+
+  // Tipo intervento
   if (a.tipo_intervento) {
-    tipoChips.querySelectorAll('.chip').forEach(c => {
+    document.querySelectorAll('#rapp-tipo-chips .chip').forEach(c => {
       c.classList.toggle('selected', c.dataset.val === a.tipo_intervento);
     });
   }
-  showTab('rapportino');
-  toast('Dati copiati nel rapportino');
+
+  toast('✅ Dati copiati nel rapportino');
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1800,6 +1842,7 @@ async function generaPDF() {
   const prossima = document.getElementById('rapp-prossima').value;
   const firmatario = document.getElementById('rapp-firmatario').value;
   const indirizzo = document.getElementById('rapp-indirizzo').value;
+  const commessa = (document.getElementById('rapp-commessa')?.value || '').trim();
   const numRapp = document.getElementById('rapp-numero').textContent;
 
   if (!lavori.trim()) { toast('Descrivi i lavori eseguiti'); return; }
@@ -1862,14 +1905,21 @@ async function generaPDF() {
 
   y += 25;
 
-  // Riga 2: Cliente | Tipo Impianto
-  const bw2 = (CW - 3) / 2;
-  drawBox('Cliente', M, y, bw2, 20);
+  // Riga 2: Cliente | Tipo Impianto | Commessa
+  const bw2 = commessa ? (CW - 6) / 3 : (CW - 3) / 2;
+  drawBox('Cliente', M, y, commessa ? bw2 * 1.5 + 3 : bw2, 20);
   doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30,41,59);
-  doc.text(cliente ? cliente.nome : '-', M + 3, y + 13, { maxWidth: bw2 - 6 });
+  doc.text(cliente ? cliente.nome : '-', M + 3, y + 13, { maxWidth: (commessa ? bw2 * 1.5 : bw2) - 6 });
 
-  drawBox('Tipo Impianto', M + bw2 + 3, y, bw2, 20);
-  doc.text(impiantoEl ? impiantoEl.dataset.val : '-', M + bw2 + 6, y + 13);
+  const impiCol = M + (commessa ? bw2 * 1.5 + 6 : bw2 + 3);
+  const impiW = commessa ? bw2 * 0.75 : bw2;
+  drawBox('Tipo Impianto', impiCol, y, impiW, 20);
+  doc.text(impiantoEl ? impiantoEl.dataset.val : '-', impiCol + 3, y + 13, { maxWidth: impiW - 6 });
+
+  if (commessa) {
+    drawBox('Commessa / N° Ordine', impiCol + impiW + 3, y, CW - (impiCol - M) - impiW - 3, 20);
+    doc.text(commessa, impiCol + impiW + 6, y + 13);
+  }
 
   y += 25;
 
@@ -1936,8 +1986,10 @@ async function generaPDF() {
   doc.setDrawColor(219,234,254);
   doc.line(M, PH - 12, PW - M, PH - 12);
 
-  // Salva e scarica
-  const filename = `Rapportino_${numRapp}_${cliente ? cliente.nome.replace(/\s+/g,'_') : 'cliente'}.pdf`;
+  // Salva e scarica — nome: DATA_CLIENTE_NumRapportino.pdf
+  const nomeCliente = (cliente ? cliente.nome : 'Cliente').replace(/[^a-zA-Z0-9À-ÿ]/g, '_').replace(/_+/g,'_');
+  const nomeCommessa = commessa ? '_' + commessa.replace(/[^a-zA-Z0-9]/g,'_') : '';
+  const filename = `${data}_${nomeCliente}${nomeCommessa}_${numRapp}.pdf`;
   doc.save(filename);
 
   // Incrementa numero rapportino
@@ -1959,6 +2011,7 @@ async function generaPDF() {
     numero: numRapp - 1,
     tecnico: tecnicoId,
     cliente: clienteId,
+    commessa,
     data,
     ore: parseFloat(ore) || 0,
     tipo: tipoEl ? tipoEl.dataset.val : '-',
