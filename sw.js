@@ -1,4 +1,4 @@
-const CACHE = 'mda-v2';
+const CACHE = 'mda-v3';
 const ASSETS = ['/mda-app/', '/mda-app/index.html'];
 
 self.addEventListener('install', e => {
@@ -11,8 +11,15 @@ self.addEventListener('activate', e => {
   ).then(() => self.clients.claim()));
 });
 
+// Network-first: prova sempre la rete, fallback sulla cache
 self.addEventListener('fetch', e => {
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('/mda-app/index.html')))
+    fetch(e.request)
+      .then(response => {
+        const clone = response.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(e.request).then(r => r || caches.match('/mda-app/index.html')))
   );
 });
