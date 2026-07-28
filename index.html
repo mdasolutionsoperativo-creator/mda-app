@@ -1475,28 +1475,51 @@ function apriRapportinoDa(id) {
     if (techSel) techSel.value = a.tecnico;
   }
 
-  // Cliente: cerca per ID, fallback per nome
+  // Cliente: matching robusto (ID diretto → nome in CLIENTI → testo nella select)
   const clienteSel = document.getElementById('rapp-cliente');
+  let clienteTrovato = null;
+
   if (clienteSel) {
+    // 1. Prova per clienteId diretto
     if (a.clienteId) {
       clienteSel.value = a.clienteId;
+      // Verifica che il browser abbia accettato il valore (esiste come option)
+      if (clienteSel.value === a.clienteId) {
+        clienteTrovato = CLIENTI.find(c => c.id === a.clienteId);
+      }
     }
-    // Se il valore non è stato impostato (ID non trovato nella select), cerca per nome
-    if (!clienteSel.value && a.clienteNome) {
-      for (let opt of clienteSel.options) {
-        if (opt.textContent.toLowerCase().includes(a.clienteNome.toLowerCase())) {
-          clienteSel.value = opt.value;
-          break;
+
+    // 2. Fallback: cerca in CLIENTI per clienteNome (match parziale)
+    if (!clienteTrovato) {
+      const nomeDaCercare = (a.clienteNome || '').toLowerCase().trim();
+      if (nomeDaCercare) {
+        clienteTrovato = CLIENTI.find(c =>
+          c.nome.toLowerCase().includes(nomeDaCercare) ||
+          nomeDaCercare.includes(c.nome.toLowerCase())
+        );
+        if (clienteTrovato) clienteSel.value = clienteTrovato.id;
+      }
+    }
+
+    // 3. Ultimo fallback: confronto testo nelle options della select
+    if (!clienteTrovato) {
+      const nomeDaCercare = (a.clienteNome || '').toLowerCase().trim();
+      if (nomeDaCercare) {
+        for (let opt of clienteSel.options) {
+          if (opt.textContent.toLowerCase().includes(nomeDaCercare.substring(0, 8))) {
+            clienteSel.value = opt.value;
+            clienteTrovato = CLIENTI.find(c => c.id === opt.value);
+            break;
+          }
         }
       }
     }
   }
 
-  // Indirizzo dal cliente
-  const cliente = CLIENTI.find(c => c.id === a.clienteId);
-  if (cliente && cliente.indirizzo) {
+  // Indirizzo dal cliente trovato
+  if (clienteTrovato && clienteTrovato.indirizzo) {
     const indirizzoEl = document.getElementById('rapp-indirizzo');
-    if (indirizzoEl && !indirizzoEl.value) indirizzoEl.value = cliente.indirizzo;
+    if (indirizzoEl && !indirizzoEl.value) indirizzoEl.value = clienteTrovato.indirizzo;
   }
 
   document.getElementById('rapp-data').value = a.data;
