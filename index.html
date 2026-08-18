@@ -1544,6 +1544,16 @@ function apriRapportinoDa(id) {
         }
       }
     }
+
+    // 4. Estrai codice cliente dal formato "[CODICE] Nome" del titolo evento Calendar
+    if (!clienteTrovato) {
+      const codeMatch = (a.clienteNome || '').match(/^\[([^\]]+)\]/);
+      if (codeMatch) {
+        const codice = codeMatch[1].trim();
+        clienteTrovato = CLIENTI.find(c => (c.codice || '') === codice || c.id === codice);
+        if (clienteTrovato) clienteSel.value = clienteTrovato.id;
+      }
+    }
   }
 
   // Indirizzo dal cliente trovato
@@ -2335,7 +2345,8 @@ function _apptToEvent(appt) {
       `Tecnico: ${t.nome}`,
       appt.note ? `Note: ${appt.note}` : '',
       appt.completato ? '✅ COMPLETATO' : '',
-      `[mda_id:${appt.id}]`
+      `[mda_id:${appt.id}]`,
+      appt.clienteId ? `[mda_cid:${appt.clienteId}]` : ''
     ].filter(Boolean).join('\n'),
     location: c.indirizzo || '',
     start: { dateTime: `${appt.data}T${ora}:00`, timeZone: 'Europe/Rome' },
@@ -2421,6 +2432,10 @@ async function gcalImport() {
         const timeStr = ev.start.dateTime.split('T')[1].slice(0,5);
         const timeEnd = ev.end?.dateTime?.split('T')[1]?.slice(0,5) || '';
         const clienteM = CLIENTI.find(c => ev.summary?.includes(c.nome) || ev.summary?.includes(c.codice||'XXX'));
+        // Leggi clienteId salvato nella descrizione (tag [mda_cid:xxx]) se presente
+        const cidMatch = ev.description?.match(/\[mda_cid:([^\]]+)\]/);
+        const resolvedClienteId = cidMatch?.[1] || clienteM?.id || '';
+        const resolvedClienteNome = clienteM?.nome || (resolvedClienteId ? CLIENTI.find(c=>c.id===resolvedClienteId)?.nome : '') || ev.summary || '';
         appuntamenti.push({
           id: 'gcal_' + ev.id,
           gcalId: ev.id,
@@ -2428,8 +2443,8 @@ async function gcalImport() {
           data: dateStr,
           ora: timeStr,
           oraFine: timeEnd,
-          clienteId:   clienteM?.id   || '',
-          clienteNome: clienteM?.nome  || ev.summary || '',
+          clienteId:   resolvedClienteId,
+          clienteNome: resolvedClienteNome,
           tipo_intervento: '',
           note: (ev.description || '').replace(/\[mda_id:[^\]]+\]/, '').trim(),
           completato: ev.description?.includes('✅ COMPLETATO') || false,
