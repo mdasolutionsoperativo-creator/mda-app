@@ -1519,12 +1519,14 @@ function apriRapportinoDa(id) {
       }
     }
 
-    // Helper: normalizza stringa (minuscolo, rimuovi accenti e punteggiatura)
+    // Helper: normalizza stringa con espansione abbreviazioni + rimozione accenti
     const norm = s => (s||'').toLowerCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g,'')  // rimuovi accenti
+      .normalize('NFD').replace(/[̀-ͯ]/g,'')
+      .replace(/\bcond\.?\b/g,'condominio').replace(/\bneg\.?\b/g,'negozio')
+      .replace(/\babb\.?\b/g,'abbazia').replace(/\bvill\.?\b/g,'villaggio')
       .replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
 
-    // 2. Fallback: match parziale semplice
+    // 2. Fallback: match parziale semplice (sottostringa intera)
     if (!clienteTrovato) {
       const nd = norm(a.clienteNome);
       if (nd) {
@@ -1536,39 +1538,22 @@ function apriRapportinoDa(id) {
       }
     }
 
-    // 3. Fallback: match per parole chiave (gestisce abbreviazioni e accenti)
+    // 3. Fallback: match per parole chiave STRICT (tutte le parole del cliente devono essere nel titolo)
     if (!clienteTrovato) {
       const nd = norm(a.clienteNome);
       if (nd) {
-        const wordsNd = nd.split(' ').filter(w => w.length > 3);
-        if (wordsNd.length > 0) {
-          clienteTrovato = CLIENTI.find(c => {
-            const cn = norm(c.nome);
-            const wordsCn = cn.split(' ').filter(w => w.length > 3);
-            // almeno metà delle parole significative del cliente si trovano nel titolo evento
-            const matches = wordsCn.filter(w => nd.includes(w));
-            return matches.length >= Math.max(1, Math.ceil(wordsCn.length / 2));
-          });
-          if (clienteTrovato) clienteSel.value = clienteTrovato.id;
-        }
+        clienteTrovato = CLIENTI.find(c => {
+          const cn = norm(c.nome);
+          const wordsCn = cn.split(' ').filter(w => w.length > 3);
+          if (wordsCn.length === 0) return false;
+          // TUTTE le parole significative del cliente devono apparire nel titolo evento
+          return wordsCn.every(w => nd.includes(w));
+        });
+        if (clienteTrovato) clienteSel.value = clienteTrovato.id;
       }
     }
 
-    // 4. Fallback: confronto testo nelle options della select (normalizzato)
-    if (!clienteTrovato) {
-      const nd = norm(a.clienteNome);
-      if (nd) {
-        for (let opt of clienteSel.options) {
-          if (norm(opt.textContent).includes(nd.substring(0, 8))) {
-            clienteSel.value = opt.value;
-            clienteTrovato = CLIENTI.find(c => c.id === opt.value);
-            break;
-          }
-        }
-      }
-    }
-
-    // 5. Estrai codice cliente dal formato "[CODICE] Nome" del titolo evento Calendar
+    // 4. Estrai codice cliente dal formato "[CODICE] Nome" del titolo evento Calendar
     if (!clienteTrovato) {
       const codeMatch = (a.clienteNome || '').match(/^\[([^\]]+)\]/);
       if (codeMatch) {
