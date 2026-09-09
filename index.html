@@ -1662,6 +1662,7 @@ function salvaIntervento() {
   const note      = document.getElementById('int-note').value.trim();
 
   if (!tecnicoId) { toast('Seleziona il tecnico'); return; }
+  if (!clienteId) { toast('⚠️ Seleziona il cliente'); return; }
   if (!data || !ora) { toast('Inserisci data e ora'); return; }
 
   const tipoVal = tipoEl ? tipoEl.dataset.val : 'MAN. ORDIN.';
