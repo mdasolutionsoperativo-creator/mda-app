@@ -1165,7 +1165,7 @@ function renderDateStrip() {
   const DAYS = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
   strip.innerHTML = '';
 
-  let todayChipIdx = 0;
+  let selChipIdx = 0;
   for (let i = -60; i <= 60; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
@@ -1176,11 +1176,11 @@ function renderDateStrip() {
     chip.innerHTML = `<span class="dow">${DAYS[d.getDay()]}</span><span class="dom">${d.getDate()}</span>`;
     chip.onclick = () => { selectedDate = d; renderDateStrip(); renderAgendaList(); };
     strip.appendChild(chip);
-    if (isToday) todayChipIdx = strip.children.length - 1;
+    if (isSel) selChipIdx = strip.children.length - 1;
   }
-  // Scrolla per mostrare oggi con qualche giorno passato visibile a sinistra
+  // Scrolla per mostrare la data selezionata (non sempre oggi)
   setTimeout(() => {
-    const chip = strip.children[todayChipIdx];
+    const chip = strip.children[selChipIdx];
     if (chip) {
       const offset = chip.offsetLeft - Math.min(80, strip.offsetWidth * 0.2);
       strip.scrollLeft = Math.max(0, offset);
