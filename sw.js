@@ -1,4 +1,4 @@
-const CACHE = 'mda-v3';
+const CACHE = 'mda-v4';
 const ASSETS = ['/mda-app/', '/mda-app/index.html'];
 
 self.addEventListener('install', e => {
