@@ -1,8 +1,8 @@
-const CACHE = 'mda-v4';
+const CACHE = 'mda-v5';
 const ASSETS = ['/mda-app/', '/mda-app/index.html'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
 });
 
 self.addEventListener('activate', e => {
@@ -11,7 +11,10 @@ self.addEventListener('activate', e => {
   ).then(() => self.clients.claim()));
 });
 
-// Network-first: prova sempre la rete, fallback sulla cache
+self.addEventListener('message', event => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
 self.addEventListener('fetch', e => {
   e.respondWith(
     fetch(e.request)
