@@ -1033,6 +1033,19 @@ function initMain() {
   // Mostra banner Drive (se cartella configurata)
   driveUpdateUI(!!_driveToken);
 
+  // Cleanup URL parameter: ?cleanup=YYYYMMDD elimina appuntamenti fino a quella data
+  const _cleanParam = new URLSearchParams(window.location.search).get('cleanup');
+  if (_cleanParam && currentTech.isAdmin) {
+    const _soglia = _cleanParam.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+    const _aLen = appuntamenti.length, _eLen = interventoExtra.length;
+    appuntamenti = appuntamenti.filter(a => a.data > _soglia);
+    interventoExtra = interventoExtra.filter(a => a.data > _soglia);
+    saveAppuntamenti(); saveExtra();
+    const _rimossi = (_aLen - appuntamenti.length) + (_eLen - interventoExtra.length);
+    setTimeout(() => toast(`🧹 Pulizia completata: rimossi ${_rimossi} appuntamenti fino al ${_soglia}`), 800);
+    history.replaceState({}, '', window.location.pathname);
+  }
+
   showTab('home');
 }
 
