@@ -2880,7 +2880,29 @@ function caricaDatiDemo() {
    PWA SERVICE WORKER (offline)
 ═══════════════════════════════════════════════════════════ */
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/mda-app/sw.js', { scope: '/mda-app/' }).catch(() => {});
+  navigator.serviceWorker.register('/mda-app/sw.js', { scope: '/mda-app/' })
+    .then(reg => {
+      // Controlla subito se c'è una versione più nuova
+      reg.update();
+
+      // Quando trova un nuovo SW in installazione
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        newSW.addEventListener('statechange', () => {
+          // Nuovo SW installato e pronto — forza l'attivazione immediata
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+            newSW.postMessage({ type: 'SKIP_WAITING' });
+          }
+        });
+      });
+    })
+    .catch(() => {});
+
+  // Quando il SW attivo cambia (nuovo preso il controllo) → ricarica la pagina
+  let _swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!_swRefreshing) { _swRefreshing = true; window.location.reload(); }
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════
