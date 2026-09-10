@@ -2413,8 +2413,10 @@ async function uploadAllegatoDrive(inputEl, apptId) {
       appt.allegati.push({ id: driveFile.id, nome: driveFile.name, url: driveFile.webViewLink });
       if (idxA !== -1) saveAppuntamenti(); else saveExtra();
       renderAgendaList();
-      openApptModal(apptId); // aggiorna la modale
+      openApptModal(apptId);
       toast('📎 Allegato aggiunto!');
+      // Aggiorna GCal con i nuovi allegati così i tecnici li vedono dopo la sync
+      if (_gcalToken) gcalPushAppt(appt).catch(() => {});
     }
   } catch(e) {
     toast('⚠️ Errore upload allegato');
@@ -2432,6 +2434,8 @@ function rimuoviAllegato(apptId, idx) {
   renderAgendaList();
   openApptModal(apptId);
   toast('Allegato rimosso');
+  // Aggiorna GCal
+  if (_gcalToken) gcalPushAppt(appt).catch(() => {});
 }
 
 async function uploadRapportinoDrive(pdfBlob, filename) {
@@ -2503,6 +2507,16 @@ function gcalUpdateUI(connected) {
 }
 
 // Build a Google Calendar event from an appointment
+function _parseAllegatiFromDesc(desc) {
+  const allegati = [];
+  const re = /\[mda_al:([^|\]]*)\|([^|\]]*)\|([^\]]*)\]/g;
+  let m;
+  while ((m = re.exec(desc || '')) !== null) {
+    if (m[1] || m[3]) allegati.push({ id: m[1], nome: m[2], url: m[3] });
+  }
+  return allegati;
+}
+
 function _apptToEvent(appt) {
   const c = CLIENTI.find(x => x.id === appt.clienteId) || { nome: appt.clienteNome || 'Cliente', codice: '', indirizzo: '' };
   const t = Object.values(CONFIG.tecnici).find(x => x.id === appt.tecnico) || { nome: appt.tecnico };
@@ -2516,7 +2530,11 @@ function _apptToEvent(appt) {
       appt.note ? `Note: ${appt.note}` : '',
       appt.completato ? '✅ COMPLETATO' : '',
       `[mda_id:${appt.id}]`,
-      appt.clienteId ? `[mda_cid:${appt.clienteId}]` : ''
+      appt.clienteId ? `[mda_cid:${appt.clienteId}]` : '',
+      // Allegati: uno per riga come [mda_al:DRIVE_ID|NOME|URL]
+      ...(appt.allegati || []).map(al =>
+        `[mda_al:${(al.id||'').replace(/[|\]]/g,'')}|${(al.nome||'').replace(/[|\]]/g,'_')}|${(al.url||'').replace(/[\]]/g,'')}]`
+      )
     ].filter(Boolean).join('\n'),
     location: c.indirizzo || '',
     start: { dateTime: `${appt.data}T${ora}:00`, timeZone: 'Europe/Rome' },
@@ -2589,39 +2607,44 @@ async function gcalImport() {
         headers: { 'Authorization': `Bearer ${_gcalToken}` }
       });
       const data = await res.json();
+      let needsSave = false;
       for (const ev of (data.items || [])) {
         if (!ev.start?.dateTime) continue;
         const alreadyById  = appuntamenti.find(a => a.gcalId === ev.id);
         const mdaIdMatch   = ev.description?.match(/\[mda_id:([^\]]+)\]/);
         const alreadyByTag = mdaIdMatch && appuntamenti.find(a => a.id === mdaIdMatch[1]);
-        if (alreadyById || alreadyByTag) {
-          if (alreadyById && !alreadyById.gcalId) { alreadyById.gcalId = ev.id; }
+        const existing = alreadyById || alreadyByTag;
+        const evAllegati = _parseAllegatiFromDesc(ev.description);
+        const evCompletato = ev.description?.includes('✅ COMPLETATO') || false;
+        if (existing) {
+          // Aggiorna allegati e completato se cambiati
+          if (JSON.stringify(existing.allegati||[]) !== JSON.stringify(evAllegati)) {
+            existing.allegati = evAllegati; needsSave = true;
+          }
+          if (existing.completato !== evCompletato) { existing.completato = evCompletato; needsSave = true; }
+          if (alreadyById && !alreadyById.gcalId) { alreadyById.gcalId = ev.id; needsSave = true; }
           continue;
         }
         const dateStr = ev.start.dateTime.split('T')[0];
         const timeStr = ev.start.dateTime.split('T')[1].slice(0,5);
         const timeEnd = ev.end?.dateTime?.split('T')[1]?.slice(0,5) || '';
         const clienteM = CLIENTI.find(c => ev.summary?.includes(c.nome) || ev.summary?.includes(c.codice||'XXX'));
-        // Leggi clienteId salvato nella descrizione (tag [mda_cid:xxx]) se presente
         const cidMatch = ev.description?.match(/\[mda_cid:([^\]]+)\]/);
         const resolvedClienteId = cidMatch?.[1] || clienteM?.id || '';
         const resolvedClienteNome = clienteM?.nome || (resolvedClienteId ? CLIENTI.find(c=>c.id===resolvedClienteId)?.nome : '') || ev.summary || '';
         appuntamenti.push({
-          id: 'gcal_' + ev.id,
-          gcalId: ev.id,
-          tecnico: techId,
-          data: dateStr,
-          ora: timeStr,
-          oraFine: timeEnd,
-          clienteId:   resolvedClienteId,
-          clienteNome: resolvedClienteNome,
-          tipo_intervento: '',
-          note: (ev.description || '').replace(/\[mda_id:[^\]]+\]/, '').trim(),
-          completato: ev.description?.includes('✅ COMPLETATO') || false,
+          id: 'gcal_' + ev.id, gcalId: ev.id,
+          tecnico: techId, data: dateStr, ora: timeStr, oraFine: timeEnd,
+          clienteId: resolvedClienteId, clienteNome: resolvedClienteNome,
+          tipo_intervento: ev.description?.match(/Tipo:\s*([^\n\[]+)/)?.[1]?.trim() || '',
+          note: (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|\[mda_al:[^\]]+\]|✅ COMPLETATO/g,'').trim(),
+          allegati: evAllegati,
+          completato: evCompletato,
           source: 'gcal'
         });
         imported++;
       }
+      if (needsSave) saveAppuntamenti();
     } catch(e) { console.warn('GCal import error', techId, e); }
   }
   if (imported > 0) { saveAppuntamenti(); renderHome(); renderAgendaList(); toast(`⬇ ${imported} eventi importati da Calendar`); }
@@ -2696,11 +2719,24 @@ async function techCalSync() {
       return;
     }
     const data = await res.json();
+    let needsSave = false;
     for (const ev of (data.items || [])) {
       if (!ev.start?.dateTime) continue;
-      if (appuntamenti.find(a => a.gcalId === ev.id)) continue;
+      const alreadyById = appuntamenti.find(a => a.gcalId === ev.id);
       const mdaIdMatch = ev.description?.match(/\[mda_id:([^\]]+)\]/);
-      if (mdaIdMatch && appuntamenti.find(a => a.id === mdaIdMatch[1])) continue;
+      const alreadyByTag = mdaIdMatch && appuntamenti.find(a => a.id === mdaIdMatch[1]);
+      const existing = alreadyById || alreadyByTag;
+      const evAllegati = _parseAllegatiFromDesc(ev.description);
+      const evCompletato = ev.description?.includes('✅ COMPLETATO') || false;
+      if (existing) {
+        // Aggiorna allegati se l'admin ne ha aggiunti/rimossi
+        if (JSON.stringify(existing.allegati||[]) !== JSON.stringify(evAllegati)) {
+          existing.allegati = evAllegati; needsSave = true;
+        }
+        if (existing.completato !== evCompletato) { existing.completato = evCompletato; needsSave = true; }
+        if (alreadyById && !alreadyById.gcalId) { alreadyById.gcalId = ev.id; needsSave = true; }
+        continue;
+      }
       const dateStr = ev.start.dateTime.split('T')[0];
       const timeStr = ev.start.dateTime.split('T')[1].slice(0,5);
       const timeEnd = ev.end?.dateTime?.split('T')[1]?.slice(0,5) || '';
@@ -2714,16 +2750,18 @@ async function techCalSync() {
         data: dateStr, ora: timeStr, oraFine: timeEnd,
         clienteId: resolvedClienteId, clienteNome: resolvedClienteNome,
         tipo_intervento: ev.description?.match(/Tipo:\s*([^\n\[]+)/)?.[1]?.trim() || '',
-        note: (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|✅ COMPLETATO/g,'').trim(),
-        completato: ev.description?.includes('✅ COMPLETATO') || false,
+        note: (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|\[mda_al:[^\]]+\]|✅ COMPLETATO/g,'').trim(),
+        allegati: evAllegati,
+        completato: evCompletato,
         source: 'gcal'
       });
       imported++;
     }
-    if (imported > 0) { saveAppuntamenti(); renderHome(); renderAgendaList(); }
+    if (imported > 0 || needsSave) { saveAppuntamenti(); renderHome(); renderAgendaList(); }
     const ora = new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-    if (info) info.textContent = `Ultima sync: ${ora} · ${imported > 0 ? imported + ' nuovi' : 'nessuna novità'}`;
-    toast(imported > 0 ? `⬇ ${imported} appuntamenti scaricati` : '✅ Agenda aggiornata');
+    const aggiornati = needsSave && imported === 0;
+    if (info) info.textContent = `Ultima sync: ${ora} · ${imported > 0 ? imported + ' nuovi' : aggiornati ? 'allegati aggiornati' : 'nessuna novità'}`;
+    toast(imported > 0 ? `⬇ ${imported} appuntamenti scaricati` : aggiornati ? '📎 Allegati aggiornati' : '✅ Agenda aggiornata');
   } catch(e) {
     if (info) info.textContent = 'Errore di sincronizzazione';
     toast('⚠️ Errore connessione Calendar');
@@ -3129,7 +3167,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '1.8';
+const _APP_VERSION = '1.9';
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
