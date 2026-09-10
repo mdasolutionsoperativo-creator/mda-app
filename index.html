@@ -1345,6 +1345,7 @@ function renderApptCard(a) {
           <span style="flex-shrink:0">📍</span><span>${indirizzo}</span></div>` : ''}
         ${a.note ? `<div style="font-size:12px;color:#475569;margin-bottom:10px;padding:8px 10px;background:#f1f5f9;border-radius:8px;border-left:3px solid var(--blue-light)">
           <span style="font-weight:600;color:var(--sub);font-size:11px;text-transform:uppercase;letter-spacing:.3px">Note</span><br>${a.note}</div>` : ''}
+        ${a.allegati?.length ? `<div style="margin-bottom:10px">${a.allegati.map(al=>`<a href="${al.url}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#6366f1;text-decoration:none;background:#eef2ff;border-radius:6px;padding:4px 8px;margin:0 4px 4px 0">📎 ${al.nome}</a>`).join('')}</div>` : ''}
         <div class="appt-actions" onclick="event.stopPropagation()">
           <button class="btn-sm ${a.completato?'success':'primary'}" onclick="toggleCompletato('${a.id}')">
             ${a.completato ? '✓ Completato' : '○ Segna fatto'}
@@ -1393,6 +1394,7 @@ function openApptModal(id) {
     ${a.note ? `<div style="font-size:13px;color:#475569;margin-bottom:14px;padding:10px 12px;background:#f1f5f9;border-radius:10px;border-left:3px solid var(--blue-light)">
       <div style="font-weight:700;font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Note</div>
       ${a.note}</div>` : ''}
+    ${renderAllegatiSection(a)}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
       <button class="btn-sm ${a.completato?'success':'primary'}" onclick="toggleCompletato('${a.id}');renderAgendaList();closeApptModal()">
         ${a.completato ? '✓ Completato' : '○ Segna fatto'}
@@ -2290,6 +2292,108 @@ function driveUpdateUI(connected) {
     if (btnC) btnC.style.display = '';
     if (btnD) btnD.style.display = 'none';
   }
+}
+
+/* ── Allegati appuntamento ─────────────────────────────── */
+function renderAllegatiSection(a) {
+  const allegati = a.allegati || [];
+  const canUpload = currentTech.isAdmin && _driveToken && GCAL.DRIVE_FOLDER_ID;
+  const canDelete = currentTech.isAdmin;
+
+  const listHTML = allegati.length
+    ? allegati.map((al, idx) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border-radius:8px;margin-bottom:6px;border:1px solid #e2e8f0">
+        <span style="font-size:16px">${al.nome.match(/\.(pdf)$/i)?'📄':'🖼'}</span>
+        <a href="${al.url}" target="_blank" style="flex:1;font-size:13px;color:#6366f1;text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${al.nome}</a>
+        ${canDelete ? `<button onclick="rimuoviAllegato('${a.id}',${idx})" style="border:none;background:none;cursor:pointer;color:#ef4444;font-size:16px;padding:0 2px;line-height:1" title="Rimuovi">×</button>` : ''}
+      </div>`).join('')
+    : '';
+
+  const uploadHTML = canUpload
+    ? `<label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:7px 12px;background:#f1f5f9;border:1.5px dashed #cbd5e1;border-radius:8px;font-size:13px;color:#64748b;margin-top:${allegati.length?'4':'0'}px" id="lbl-allegato-${a.id}">
+        <span>➕ Aggiungi allegato</span>
+        <input type="file" accept="image/*,application/pdf" style="display:none" onchange="uploadAllegatoDrive(this,'${a.id}')">
+       </label>`
+    : (!currentTech.isAdmin ? '' : `<div style="font-size:12px;color:#94a3b8;margin-top:4px">Connetti Drive per allegare file</div>`);
+
+  if (!allegati.length && !canUpload && !currentTech.isAdmin) return '';
+
+  return `<div style="margin-bottom:14px">
+    <div style="font-weight:700;font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px">📎 Allegati</div>
+    <div id="allegati-list-${a.id}">${listHTML}</div>
+    ${uploadHTML}
+  </div>`;
+}
+
+async function uploadAllegatoDrive(inputEl, apptId) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  if (!_driveToken) { toast('⚠️ Connetti Google Drive per allegare file'); return; }
+  if (!GCAL.DRIVE_FOLDER_ID) { toast('⚠️ Cartella Drive non configurata'); return; }
+
+  // Disabilita label durante upload
+  const lbl = document.getElementById('lbl-allegato-' + apptId);
+  if (lbl) lbl.style.opacity = '0.5';
+  toast('⏳ Caricamento allegato…');
+
+  const metadata = {
+    name: file.name,
+    parents: [GCAL.DRIVE_FOLDER_ID],
+    mimeType: file.type || 'application/octet-stream'
+  };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', file);
+
+  try {
+    const resp = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',
+      { method: 'POST', headers: { Authorization: `Bearer ${_driveToken}` }, body: form }
+    );
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (resp.status === 401) { _driveToken = null; localStorage.removeItem('mda_drive_tok'); driveUpdateUI(false); toast('⚠️ Sessione Drive scaduta — riconnetti'); }
+      else toast('⚠️ Upload fallito');
+      if (lbl) lbl.style.opacity = '1';
+      return;
+    }
+    const driveFile = await resp.json();
+
+    // Rendi pubblico con link
+    await fetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' })
+    }).catch(() => {});
+
+    // Salva nell'appuntamento
+    const idxA = appuntamenti.findIndex(x => x.id === apptId);
+    const idxE = interventoExtra.findIndex(x => x.id === apptId);
+    const appt = idxA !== -1 ? appuntamenti[idxA] : (idxE !== -1 ? interventoExtra[idxE] : null);
+    if (appt) {
+      if (!appt.allegati) appt.allegati = [];
+      appt.allegati.push({ id: driveFile.id, nome: driveFile.name, url: driveFile.webViewLink });
+      if (idxA !== -1) saveAppuntamenti(); else saveExtra();
+      renderAgendaList();
+      openApptModal(apptId); // aggiorna la modale
+      toast('📎 Allegato aggiunto!');
+    }
+  } catch(e) {
+    toast('⚠️ Errore upload allegato');
+    if (lbl) lbl.style.opacity = '1';
+  }
+}
+
+function rimuoviAllegato(apptId, idx) {
+  const idxA = appuntamenti.findIndex(x => x.id === apptId);
+  const idxE = interventoExtra.findIndex(x => x.id === apptId);
+  const appt = idxA !== -1 ? appuntamenti[idxA] : (idxE !== -1 ? interventoExtra[idxE] : null);
+  if (!appt || !appt.allegati) return;
+  appt.allegati.splice(idx, 1);
+  if (idxA !== -1) saveAppuntamenti(); else saveExtra();
+  renderAgendaList();
+  openApptModal(apptId);
+  toast('Allegato rimosso');
 }
 
 async function uploadRapportinoDrive(pdfBlob, filename) {
