@@ -2314,7 +2314,11 @@ function renderAllegatiSection(a) {
         <span>➕ Aggiungi allegato</span>
         <input type="file" accept="image/*,application/pdf" style="display:none" onchange="uploadAllegatoDrive(this,'${a.id}')">
        </label>`
-    : (!currentTech.isAdmin ? '' : `<div style="font-size:12px;color:#94a3b8;margin-top:4px">Connetti Drive per allegare file</div>`);
+    : (currentTech.isAdmin && GCAL.DRIVE_FOLDER_ID
+        ? `<button onclick="driveConnect()" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;background:#f0f9ff;border:1.5px solid #38bdf8;border-radius:8px;font-size:13px;color:#0284c7;font-weight:600;cursor:pointer;margin-top:${allegati.length?'4':'0'}px">
+            ☁️ Collega Google Drive per allegare file
+           </button>`
+        : '');
 
   if (!allegati.length && !canUpload && !currentTech.isAdmin) return '';
 
