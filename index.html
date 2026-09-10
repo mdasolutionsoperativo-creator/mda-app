@@ -2996,6 +2996,27 @@ function caricaDatiDemo() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   VERSIONE APP — controllo aggiornamento cache
+═══════════════════════════════════════════════════════════ */
+const _APP_VERSION = '1.7';
+(function checkAppVersion() {
+  const stored = localStorage.getItem('mda_app_ver');
+  if (stored && stored !== _APP_VERSION) {
+    // Versione cambiata → svuota tutte le cache SW e ricarica
+    localStorage.setItem('mda_app_ver', _APP_VERSION);
+    if ('caches' in window) {
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+        .then(() => window.location.reload(true))
+        .catch(() => window.location.reload(true));
+    } else {
+      window.location.reload(true);
+    }
+    return;
+  }
+  if (!stored) localStorage.setItem('mda_app_ver', _APP_VERSION);
+})();
+
+/* ═══════════════════════════════════════════════════════════
    PWA SERVICE WORKER (offline)
 ═══════════════════════════════════════════════════════════ */
 if ('serviceWorker' in navigator) {
