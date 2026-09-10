@@ -1405,10 +1405,12 @@ function openApptModal(id) {
       <button class="btn-sm" onclick="if(confirm('Eliminare questo intervento?'))deleteAppt('${a.id}');closeApptModal()" style="background:#ef4444;color:#fff;border-color:#ef4444">🗑 Elimina</button>` : ''}
     </div>`;
 
+  _openApptModalId = id;
   document.getElementById('appt-modal-overlay').classList.remove('hidden');
 }
 
 function closeApptModal() {
+  _openApptModalId = null;
   document.getElementById('appt-modal-overlay').classList.add('hidden');
 }
 
@@ -2166,6 +2168,7 @@ const _GCAL_API = 'https://www.googleapis.com/calendar/v3/calendars';
 
 // ── Drive ─────────────────────────────────────────────────
 let _driveTokenClient = null, _driveToken = null;
+let _openApptModalId = null; // tiene traccia del modal aperto per aggiornarlo dopo Drive connect
 
 function gapiLoaded() {
   _gapiReady = true;
@@ -2202,6 +2205,8 @@ function gisLoaded() {
       localStorage.setItem('mda_drive_exp', exp);
       driveUpdateUI(true);
       toast('☁️ Google Drive connesso!');
+      // Aggiorna il modal appuntamento aperto (se presente) per mostrare il pulsante allegati
+      if (_openApptModalId) openApptModal(_openApptModalId);
     }
   });
 
