@@ -448,6 +448,21 @@
       </div>
     </div>
 
+    <!-- Tecnico: sync Calendar personale -->
+    <div id="tech-cal-section" style="display:none;margin-top:16px">
+      <p class="section-title">🗓 Agenda — Sincronizza</p>
+      <div class="card" style="padding:14px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px">
+          <span id="tech-cal-dot" style="width:10px;height:10px;border-radius:50%;background:#d1d5db;flex-shrink:0"></span>
+          <span id="tech-cal-label" style="flex:1;color:var(--sub);font-size:13px">Connetti per ricevere gli appuntamenti</span>
+          <button class="btn-sm primary" id="tech-cal-btn-connect" onclick="techCalConnect()" style="white-space:nowrap">🔗 Connetti</button>
+          <button class="btn-sm primary" id="tech-cal-btn-sync" onclick="techCalSync()" style="display:none;white-space:nowrap">🔄 Aggiorna</button>
+          <button class="btn-sm" id="tech-cal-btn-disconnect" onclick="techCalDisconnect()" style="display:none">✕</button>
+        </div>
+        <div id="tech-cal-sync-info" style="font-size:11px;color:#6b7280;margin-top:6px;display:none"></div>
+      </div>
+    </div>
+
     <!-- Admin: lista tecnici -->
     <div id="admin-tech-section" style="display:none">
       <p class="section-title" style="margin-top:16px">Tecnici</p>
@@ -1017,12 +1032,14 @@ function initMain() {
     renderFerieAdmin();
   }
 
-  // Non-admin: mostra sezione presenze personali
+  // Non-admin: mostra sezione presenze personali + sync Calendar
   if (!currentTech.isAdmin) {
     document.getElementById('presenze-section').style.display = 'block';
+    document.getElementById('tech-cal-section').style.display = 'block';
     const _nowP = new Date();
     document.getElementById('mie-presenze-mese').value = _nowP.getMonth() + 1;
     document.getElementById('mie-presenze-anno').value = _nowP.getFullYear();
+    techCalUpdateUI(!!_gcalToken);
   }
 
   // Se non admin, preseleziona il tecnico nei form
@@ -2155,6 +2172,8 @@ function logout() {
   document.getElementById('ferie-section').style.display = 'none';
   document.getElementById('ore-section').style.display = 'none';
   document.getElementById('gcal-section').style.display = 'none';
+  document.getElementById('tech-cal-section').style.display = 'none';
+  document.getElementById('presenze-section').style.display = 'none';
 }
 
 
@@ -2188,8 +2207,13 @@ function gisLoaded() {
       const exp = Date.now() + (resp.expires_in - 60) * 1000;
       localStorage.setItem('mda_gcal_tok', resp.access_token);
       localStorage.setItem('mda_gcal_exp', exp);
-      gcalUpdateUI(true);
-      gcalImport();
+      if (currentTech && currentTech.isAdmin) {
+        gcalUpdateUI(true);
+        gcalImport();
+      } else {
+        techCalUpdateUI(true);
+        techCalSync();
+      }
     }
   });
 
@@ -2221,8 +2245,13 @@ function _gcalTryRestore() {
   const exp = parseInt(localStorage.getItem('mda_gcal_exp') || '0');
   if (tok && exp > Date.now()) {
     _gcalToken = tok;
-    gcalUpdateUI(true);
-    gcalImport();
+    if (currentTech && currentTech.isAdmin) {
+      gcalUpdateUI(true);
+      gcalImport();
+    } else if (currentTech) {
+      techCalUpdateUI(true);
+      techCalSync();
+    }
   }
 }
 
@@ -2549,8 +2578,8 @@ async function gcalSyncAll() {
 // Import events from Google Calendar → app (last 7 days + next 60 days) via fetch
 async function gcalImport() {
   if (!_gcalToken) return;
-  const timeMin = new Date(Date.now() - 7*86400000).toISOString();
-  const timeMax = new Date(Date.now() + 60*86400000).toISOString();
+  const timeMin = new Date(Date.now() - 30*86400000).toISOString();
+  const timeMax = new Date(Date.now() + 120*86400000).toISOString();
   let imported = 0;
   for (const [techId, calId] of Object.entries(GCAL.CALENDARS)) {
     if (!calId) continue;
@@ -2598,6 +2627,108 @@ async function gcalImport() {
   if (imported > 0) { saveAppuntamenti(); renderHome(); renderAgendaList(); toast(`⬇ ${imported} eventi importati da Calendar`); }
   const info = document.getElementById('gcal-sync-info');
   if (info) info.textContent = `Ultima sync: ${new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SYNC CALENDAR PER TECNICI NON-ADMIN
+═══════════════════════════════════════════════════════════ */
+function techCalUpdateUI(connected) {
+  const dot  = document.getElementById('tech-cal-dot');
+  const lbl  = document.getElementById('tech-cal-label');
+  const btnC = document.getElementById('tech-cal-btn-connect');
+  const btnS = document.getElementById('tech-cal-btn-sync');
+  const btnD = document.getElementById('tech-cal-btn-disconnect');
+  const info = document.getElementById('tech-cal-sync-info');
+  if (!dot) return;
+  if (connected) {
+    dot.style.background = '#10b981';
+    lbl.textContent = 'Google Calendar connesso';
+    lbl.style.color = '#10b981';
+    btnC.style.display = 'none';
+    btnS.style.display = '';
+    btnD.style.display = '';
+    if (info) info.style.display = '';
+  } else {
+    dot.style.background = '#d1d5db';
+    lbl.textContent = 'Connetti per ricevere gli appuntamenti';
+    lbl.style.color = 'var(--sub)';
+    btnC.style.display = '';
+    btnS.style.display = 'none';
+    btnD.style.display = 'none';
+    if (info) { info.textContent = ''; info.style.display = 'none'; }
+  }
+}
+
+function techCalConnect() {
+  if (!GCAL.CLIENT_ID) { toast('GCal non configurato'); return; }
+  if (!_tokenClient) { toast('Libreria Google non ancora caricata, riprova'); return; }
+  _tokenClient.requestAccessToken({ prompt: _gcalToken ? '' : 'consent' });
+}
+
+function techCalDisconnect() {
+  if (_gcalToken) google.accounts.oauth2.revoke(_gcalToken, () => {});
+  _gcalToken = null;
+  localStorage.removeItem('mda_gcal_tok');
+  localStorage.removeItem('mda_gcal_exp');
+  techCalUpdateUI(false);
+  toast('Calendar disconnesso');
+}
+
+async function techCalSync() {
+  if (!_gcalToken || !currentTech) return;
+  const calId = GCAL.CALENDARS[currentTech.id];
+  if (!calId) { toast('Calendario non configurato per questo tecnico'); return; }
+  const info = document.getElementById('tech-cal-sync-info');
+  if (info) { info.textContent = 'Sincronizzazione in corso…'; info.style.display = ''; }
+  // Scarica eventi: da 30 giorni fa a 120 giorni in avanti
+  const timeMin = new Date(Date.now() - 30*86400000).toISOString();
+  const timeMax = new Date(Date.now() + 120*86400000).toISOString();
+  let imported = 0;
+  try {
+    const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '500' });
+    const res = await fetch(`${_GCAL_API}/${encodeURIComponent(calId)}/events?${params}`, {
+      headers: { 'Authorization': `Bearer ${_gcalToken}` }
+    });
+    if (res.status === 401) {
+      _gcalToken = null; localStorage.removeItem('mda_gcal_tok');
+      techCalUpdateUI(false);
+      toast('⚠️ Sessione scaduta, riconnetti Calendar');
+      return;
+    }
+    const data = await res.json();
+    for (const ev of (data.items || [])) {
+      if (!ev.start?.dateTime) continue;
+      if (appuntamenti.find(a => a.gcalId === ev.id)) continue;
+      const mdaIdMatch = ev.description?.match(/\[mda_id:([^\]]+)\]/);
+      if (mdaIdMatch && appuntamenti.find(a => a.id === mdaIdMatch[1])) continue;
+      const dateStr = ev.start.dateTime.split('T')[0];
+      const timeStr = ev.start.dateTime.split('T')[1].slice(0,5);
+      const timeEnd = ev.end?.dateTime?.split('T')[1]?.slice(0,5) || '';
+      const cidMatch = ev.description?.match(/\[mda_cid:([^\]]+)\]/);
+      const clienteM = CLIENTI.find(c => ev.summary?.includes(c.nome) || ev.summary?.includes(c.codice||'XXX'));
+      const resolvedClienteId = cidMatch?.[1] || clienteM?.id || '';
+      const resolvedClienteNome = clienteM?.nome || (resolvedClienteId ? CLIENTI.find(c=>c.id===resolvedClienteId)?.nome : '') || ev.summary || '';
+      appuntamenti.push({
+        id: 'gcal_' + ev.id, gcalId: ev.id,
+        tecnico: currentTech.id,
+        data: dateStr, ora: timeStr, oraFine: timeEnd,
+        clienteId: resolvedClienteId, clienteNome: resolvedClienteNome,
+        tipo_intervento: ev.description?.match(/Tipo:\s*([^\n\[]+)/)?.[1]?.trim() || '',
+        note: (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|✅ COMPLETATO/g,'').trim(),
+        completato: ev.description?.includes('✅ COMPLETATO') || false,
+        source: 'gcal'
+      });
+      imported++;
+    }
+    if (imported > 0) { saveAppuntamenti(); renderHome(); renderAgendaList(); }
+    const ora = new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+    if (info) info.textContent = `Ultima sync: ${ora} · ${imported > 0 ? imported + ' nuovi' : 'nessuna novità'}`;
+    toast(imported > 0 ? `⬇ ${imported} appuntamenti scaricati` : '✅ Agenda aggiornata');
+  } catch(e) {
+    if (info) info.textContent = 'Errore di sincronizzazione';
+    toast('⚠️ Errore connessione Calendar');
+    console.error('techCalSync error', e);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2998,7 +3129,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '1.7';
+const _APP_VERSION = '1.8';
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
