@@ -817,6 +817,15 @@
   </div>
 </div>
 
+<!-- ─── DRAG-CREATE MODAL ──────────────────────────────────── -->
+<div id="drag-create-overlay" class="modal-overlay hidden" onclick="closeDragCreateModal()">
+  <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:88vh;overflow-y:auto">
+    <div class="modal-handle"></div>
+    <p class="section-title" style="margin-bottom:16px">➕ Nuovo intervento</p>
+    <div id="drag-create-form"></div>
+  </div>
+</div>
+
 <!-- ─── TOAST ─────────────────────────────────────────────── -->
 <div id="toast"></div>
 
@@ -918,6 +927,8 @@ let CLIENTI = JSON.parse(localStorage.getItem('mda_clienti') || JSON.stringify([
   { id: 'M541', codice: 'M 541', nome: "Teddy Magazzino Busto Arsizio", indirizzo: "Viale Rossini 26, Busto Arsizio (VA)" },
   { id: 'M542', codice: 'M 542', nome: "Terranova Orio al Serio", indirizzo: "Via Portico 71, Orio al Serio (BG)" },
   { id: 'M543', codice: 'M 543', nome: "Teddy Magazzino Cernusco", indirizzo: "Via Albert Einstein, 20088 Cernusco sul Naviglio (MI)" },
+  { id: 'M544', codice: 'M 544', nome: "Asilo Nido Via Friuli", indirizzo: "Via Friuli, 20135 Milano (MI)" },
+  { id: 'M545', codice: 'M 545', nome: "Asilo Nido Grandate", indirizzo: "Via Roma, 22070 Grandate (CO)" },
   { id: 'E099', codice: 'E 099', nome: "Auditorium La Verdi", indirizzo: "Largo Gustav Mahler, 20136 Milano (MI)" },
   { id: 'E107', codice: 'E 107', nome: "Stab. Fiema", indirizzo: "Via Giovanni Keplero 4, 20016 Pero (MI)" },
   { id: 'E108', codice: 'E 108', nome: "Uff. P.za SS. Trinità", indirizzo: "Piazza SS. Trinità 6, Milano (MI)" },
@@ -1068,6 +1079,9 @@ function initMain() {
     setTimeout(() => toast(`🧹 Pulizia completata: rimossi ${_rimossi} appuntamenti fino al ${_soglia}`), 800);
     history.replaceState({}, '', window.location.pathname);
   }
+
+  // Inizializza listener drag agenda (una sola volta)
+  initAgendaDragListeners();
 
   showTab('home');
 }
@@ -1221,6 +1235,8 @@ function renderAgendaList() {
   if (currentTech.isAdmin) {
     // ── Vista admin: Gantt/scheduler per tecnico ──────────────
     list.innerHTML = renderSchedulerAdmin(dateStr);
+    // Attacca drag handler dopo render (setTimeout = dopo il paint)
+    setTimeout(attachAgendaDragHandlers, 0);
     return;
   }
 
@@ -1283,12 +1299,12 @@ function renderSchedulerAdmin(dateStr) {
       if (width <= 0) continue;
 
       const timeLabel = a.ora + (a.ora_fine ? '–' + a.ora_fine : '');
-      blocks += `<div onclick="event.stopPropagation();openApptModal('${a.id}')" style="
+      blocks += `<div class="agenda-appt-block" data-appt-id="${a.id}" onclick="event.stopPropagation();openApptModal('${a.id}')" style="
           position:absolute;left:${left.toFixed(2)}%;width:${width.toFixed(2)}%;
           top:5px;bottom:5px;background:${tech.colore};color:#fff;
-          border-radius:6px;padding:3px 7px;overflow:hidden;cursor:pointer;
+          border-radius:6px;padding:3px 7px;overflow:hidden;cursor:grab;
           box-shadow:0 1px 4px rgba(0,0,0,.22);opacity:${a.completato ? 0.45 : 1};
-          display:flex;flex-direction:column;justify-content:center;">
+          display:flex;flex-direction:column;justify-content:center;user-select:none;">
         <div style="font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3">${cliente.nome}</div>
         <div style="font-size:10px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${timeLabel}${a.tipo_intervento ? ' · '+a.tipo_intervento : ''}</div>
       </div>`;
@@ -1305,7 +1321,7 @@ function renderSchedulerAdmin(dateStr) {
           <div class="tech-badge" style="background:${tech.colore};width:28px;height:28px;font-size:10px;flex-shrink:0">${tech.iniziali}</div>
           <span style="font-size:11px;font-weight:600;color:${feriaOggi ? '#d97706' : '#334155'};line-height:1.3">${tech.nome}${feriaOggi ? '<br><span style="font-size:9px;font-weight:600;color:#d97706">🏖 in ferie</span>' : ''}</span>
         </div>
-        <div style="flex:1;position:relative;min-height:58px;background:${feriaOggi ? '#fffbeb' : '#fafafa'};">
+        <div class="agenda-row-grid" data-tech-id="${tech.id}" style="flex:1;position:relative;min-height:58px;cursor:crosshair;background:${feriaOggi ? '#fffbeb' : '#fafafa'};">
           ${gridLines}
           ${feriaLabel}
           ${blocks || (!feriaOggi ? '<div style="position:absolute;inset:0;display:flex;align-items:center;padding-left:14px;"><span style="font-size:11px;color:#cbd5e1;font-style:italic;">–</span></div>' : '')}
@@ -3148,6 +3164,310 @@ function toast(msg) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   DRAG AGENDA — CREATE + MOVE
+   - initAgendaDragListeners(): chiamato 1 volta in initMain()
+   - attachAgendaDragHandlers(): chiamato dopo ogni renderAgendaList() admin
+═══════════════════════════════════════════════════════════ */
+const _DA_HS = 7, _DA_HE = 19, _DA_HT = 12; // ora inizio/fine/totale
+let _drag = null; // stato drag globale
+
+// Converti posizione pixel X in orario (snap 15 min)
+function _pxToTime(px, rect) {
+  const ratio = Math.max(0, Math.min(1, (px - rect.left) / rect.width));
+  const totalMins = Math.round((_DA_HS + ratio * _DA_HT) * 4) * 15;
+  return `${String(Math.floor(totalMins / 60)).padStart(2,'0')}:${String(totalMins % 60).padStart(2,'0')}`;
+}
+
+// Chiamato una volta sola al login
+function initAgendaDragListeners() {
+  document.addEventListener('mousemove', _aDragMove);
+  document.addEventListener('mouseup',   _aDragEnd);
+  // Touch support
+  document.addEventListener('touchmove', _aTouchMove, { passive: false });
+  document.addEventListener('touchend',  _aTouchEnd);
+}
+
+// Chiamato dopo ogni render admin
+function attachAgendaDragHandlers() {
+  document.querySelectorAll('.agenda-row-grid').forEach(g => {
+    g.removeEventListener('mousedown', _aGridDown);
+    g.addEventListener('mousedown', _aGridDown);
+    g.removeEventListener('touchstart', _aGridTouch);
+    g.addEventListener('touchstart', _aGridTouch, { passive: false });
+  });
+  document.querySelectorAll('.agenda-appt-block').forEach(b => {
+    b.removeEventListener('mousedown', _aBlockDown);
+    b.addEventListener('mousedown', _aBlockDown);
+    b.removeEventListener('touchstart', _aBlockTouch);
+    b.addEventListener('touchstart', _aBlockTouch, { passive: false });
+  });
+}
+
+/* ── DRAG CREATE (click+trascina su cella vuota) ─────────── */
+function _aGridDown(e) {
+  if (e.button !== 0) return;
+  if (e.target.closest('.agenda-appt-block')) return;
+  e.preventDefault();
+  const grid = e.currentTarget;
+  const rect = grid.getBoundingClientRect();
+  const box = document.createElement('div');
+  box.style.cssText = 'position:absolute;top:4px;bottom:4px;background:rgba(99,102,241,.18);border:2px solid #6366f1;border-radius:6px;pointer-events:none;z-index:10;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#6366f1;white-space:nowrap;padding:0 6px;overflow:hidden;';
+  grid.appendChild(box);
+  _drag = { type: 'create', grid, rect, startX: e.clientX, box };
+}
+function _aGridTouch(e) {
+  if (e.target.closest('.agenda-appt-block')) return;
+  e.preventDefault();
+  const touch = e.touches[0];
+  const grid = e.currentTarget;
+  const rect = grid.getBoundingClientRect();
+  const box = document.createElement('div');
+  box.style.cssText = 'position:absolute;top:4px;bottom:4px;background:rgba(99,102,241,.18);border:2px solid #6366f1;border-radius:6px;pointer-events:none;z-index:10;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#6366f1;white-space:nowrap;padding:0 6px;overflow:hidden;';
+  grid.appendChild(box);
+  _drag = { type: 'create', grid, rect, startX: touch.clientX, box };
+}
+
+/* ── DRAG MOVE (click+trascina su blocco appuntamento) ────── */
+function _aBlockDown(e) {
+  if (e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation();
+  _startBlockDrag(e.currentTarget, e.clientX, e.clientY);
+}
+function _aBlockTouch(e) {
+  e.preventDefault(); e.stopPropagation();
+  const touch = e.touches[0];
+  _startBlockDrag(e.currentTarget, touch.clientX, touch.clientY);
+}
+function _startBlockDrag(block, clientX, clientY) {
+  const apptId = block.dataset.apptId;
+  const a = getAllAppts().find(x => x.id === apptId);
+  if (!a) return;
+  const br = block.getBoundingClientRect();
+  const ox = clientX - br.left;
+  const oy = clientY - br.top;
+  // Crea ghost
+  const ghost = document.createElement('div');
+  ghost.innerHTML = block.innerHTML;
+  ghost.style.cssText = `position:fixed;opacity:.88;pointer-events:none;z-index:9999;` +
+    `width:${br.width}px;height:${br.height}px;top:${br.top}px;left:${br.left}px;` +
+    `background:${block.style.background};color:#fff;border-radius:6px;padding:3px 7px;` +
+    `box-shadow:0 8px 32px rgba(0,0,0,.28);font-size:11px;font-weight:700;` +
+    `display:flex;flex-direction:column;justify-content:center;transform:scale(1.04);`;
+  document.body.appendChild(ghost);
+  block.style.opacity = '0.3';
+  _drag = { type: 'move', apptId, ghost, block, ox, oy };
+}
+
+/* ── MOUSEMOVE / TOUCHMOVE ─────────────────────────────── */
+function _aDragMove(e) { _dragUpdate(e.clientX, e.clientY); }
+function _aTouchMove(e) {
+  if (!_drag) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  _dragUpdate(t.clientX, t.clientY);
+}
+function _dragUpdate(cx, cy) {
+  if (!_drag) return;
+
+  if (_drag.type === 'create') {
+    const { rect, startX, box } = _drag;
+    const cur = Math.max(rect.left, Math.min(rect.right, cx));
+    const l = (Math.min(startX, cur) - rect.left) / rect.width * 100;
+    const w = Math.abs(cur - startX) / rect.width * 100;
+    box.style.left  = l + '%';
+    box.style.width = w + '%';
+    if (w > 1.5) {
+      const t1 = _pxToTime(Math.min(cx, startX), rect);
+      const t2 = _pxToTime(Math.max(cx, startX), rect);
+      box.textContent = `${t1}–${t2}`;
+    } else {
+      box.textContent = '';
+    }
+  }
+
+  if (_drag.type === 'move') {
+    const { ghost, ox, oy } = _drag;
+    ghost.style.left = (cx - ox) + 'px';
+    ghost.style.top  = (cy - oy) + 'px';
+    // Evidenzia riga target
+    document.querySelectorAll('.agenda-row-grid').forEach(g => g.style.outline = '');
+    const hov = document.elementFromPoint(cx, cy)?.closest?.('.agenda-row-grid');
+    if (hov) hov.style.outline = '2px solid #6366f1';
+  }
+}
+
+/* ── MOUSEUP / TOUCHEND ────────────────────────────────── */
+function _aDragEnd(e) { _dragFinish(e.clientX, e.clientY); }
+function _aTouchEnd(e) {
+  if (!_drag) return;
+  const t = e.changedTouches[0];
+  _dragFinish(t.clientX, t.clientY);
+}
+function _dragFinish(cx, cy) {
+  if (!_drag) return;
+
+  if (_drag.type === 'create') {
+    const { grid, rect, startX, box } = _drag;
+    box.remove();
+    const distPx = Math.abs(cx - startX);
+    _drag = null;
+    if (distPx > 20) {
+      const techId = grid.dataset.techId;
+      const t1 = _pxToTime(Math.min(cx, startX), rect);
+      const t2 = _pxToTime(Math.max(cx, startX), rect);
+      openDragCreateModal(techId, t1, t2);
+    }
+    return;
+  }
+
+  if (_drag.type === 'move') {
+    const { ghost, block, apptId, ox } = _drag;
+    ghost.remove();
+    block.style.opacity = '';
+    document.querySelectorAll('.agenda-row-grid').forEach(g => g.style.outline = '');
+    const targetGrid = document.elementFromPoint(cx, cy)?.closest?.('.agenda-row-grid');
+    _drag = null;
+    if (targetGrid) {
+      const rect = targetGrid.getBoundingClientRect();
+      const newTechId = targetGrid.dataset.techId;
+      // Calcola orari: bordo sinistro del ghost = cx - ox
+      const leftX  = cx - ox;
+      const rightX = cx + (block.offsetWidth - ox);
+      const newOra     = _pxToTime(Math.max(rect.left, leftX),  rect);
+      const newOraFine = _pxToTime(Math.min(rect.right, rightX), rect);
+      applyApptMove(apptId, newTechId, newOra, newOraFine);
+    }
+    return;
+  }
+
+  _drag = null;
+}
+
+/* ── APPLICA SPOSTAMENTO ────────────────────────────────── */
+function applyApptMove(apptId, newTechId, newOra, newOraFine) {
+  let found = interventoExtra.find(a => a.id === apptId);
+  const inExtra = !!found;
+  if (!found) found = appuntamenti.find(a => a.id === apptId);
+  if (!found) return;
+  found.tecnico  = newTechId;
+  found.ora      = newOra;
+  found.ora_fine = newOraFine;
+  if (inExtra) saveExtra(); else saveAppuntamenti();
+  gcalPushAppt(found);
+  renderAgendaList();
+  renderHome();
+  toast(`✅ Spostato alle ${newOra}–${newOraFine}`);
+}
+
+/* ── MODAL DRAG-CREATE ──────────────────────────────────── */
+function openDragCreateModal(techId, oraInizio, oraFine) {
+  const tech = Object.values(CONFIG.tecnici).find(t => t.id === techId);
+  const dateLabel = selectedDate.toLocaleDateString('it-IT', {weekday:'long', day:'numeric', month:'long'});
+  const dateStr   = selectedDate.toISOString().split('T')[0];
+
+  const tipi = ['MAN. ORDIN.','ADDOLCITORE','ELETTRICO','EVACUAZIONE','VMC','ANTINTRUSIONE'];
+  const chipsHtml = tipi.map((t,i) =>
+    `<span class="chip${i===0?' selected':''}" data-val="${t}"
+      onclick="this.closest('.dc-chips').querySelectorAll('.chip').forEach(c=>c.classList.remove('selected'));this.classList.add('selected')"
+      style="font-size:11px">${t}</span>`
+  ).join('');
+
+  const sorted = [...CLIENTI].sort((a,b) => a.id.localeCompare(b.id));
+  const optsHtml = sorted.map(c =>
+    `<option value="${c.id}">[${c.codice||c.id}] ${c.nome}</option>`
+  ).join('');
+
+  document.getElementById('drag-create-form').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;background:#f1f5f9;border-radius:10px;padding:10px 14px;margin-bottom:16px">
+      <div class="tech-badge" style="background:${tech?.colore||'#6366f1'};width:36px;height:36px;font-size:12px;flex-shrink:0">${tech?.iniziali||'?'}</div>
+      <div>
+        <div style="font-weight:700;font-size:14px;color:#1e293b">${tech?.nome||techId}</div>
+        <div style="font-size:12px;color:#64748b">${dateLabel}</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <div style="flex:1">
+        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Inizio</label>
+        <input id="dc-ora" type="time" class="form-control" value="${oraInizio}" style="margin-top:4px">
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Fine</label>
+        <input id="dc-ora-fine" type="time" class="form-control" value="${oraFine}" style="margin-top:4px">
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cliente</label>
+      <select id="dc-cliente" class="form-control" style="margin-top:4px">
+        <option value="">— Seleziona cliente —</option>
+        ${optsHtml}
+      </select>
+    </div>
+
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Tipo intervento</label>
+      <div class="chips dc-chips" style="margin-top:6px;flex-wrap:wrap">${chipsHtml}</div>
+    </div>
+
+    <div style="margin-bottom:18px">
+      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Note (opzionale)</label>
+      <textarea id="dc-note" class="form-control" rows="2" placeholder="Note aggiuntive…" style="margin-top:4px;resize:none"></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveDragCreate('${techId}','${dateStr}')">💾 Salva intervento</button>
+      <button class="btn" style="flex:0 0 auto;background:#f1f5f9;color:#475569;border:none;padding:0 18px" onclick="closeDragCreateModal()">Annulla</button>
+    </div>
+  `;
+
+  document.getElementById('drag-create-overlay').classList.remove('hidden');
+  setTimeout(() => document.getElementById('dc-cliente')?.focus(), 120);
+}
+
+function closeDragCreateModal() {
+  document.getElementById('drag-create-overlay').classList.add('hidden');
+}
+
+function saveDragCreate(techId, dateStr) {
+  const clienteId = document.getElementById('dc-cliente').value;
+  const ora       = document.getElementById('dc-ora').value;
+  const oraFine   = document.getElementById('dc-ora-fine').value;
+  const tipoEl    = document.querySelector('.dc-chips .chip.selected');
+  const note      = document.getElementById('dc-note').value.trim();
+
+  if (!clienteId) { toast('⚠️ Seleziona il cliente'); return; }
+  if (!ora)       { toast('⚠️ Inserisci l\'ora di inizio'); return; }
+
+  const tipo    = tipoEl ? tipoEl.dataset.val : 'MAN. ORDIN.';
+  const cliente = CLIENTI.find(c => c.id === clienteId);
+
+  const newAppt = {
+    id:              'extra_drag_' + Date.now(),
+    tecnico:         techId,
+    clienteId,
+    clienteNome:     cliente?.nome || '',
+    data:            dateStr,
+    ora,
+    ora_fine:        oraFine || '',
+    tipo_intervento: tipo,
+    note,
+    completato:      false,
+    tipo:            'extra',
+    source:          'drag',
+    creato:          new Date().toISOString(),
+  };
+
+  interventoExtra.push(newAppt);
+  saveExtra();
+  gcalPushAppt(newAppt);
+  closeDragCreateModal();
+  renderAgendaList();
+  renderHome();
+  toast('✅ Intervento creato!');
+}
+
+/* ═══════════════════════════════════════════════════════════
    DATI DEMO (rimovibili in produzione)
 ═══════════════════════════════════════════════════════════ */
 function caricaDatiDemo() {
@@ -3167,7 +3487,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '1.9';
+const _APP_VERSION = '2.0'; // drag agenda
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
