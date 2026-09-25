@@ -3171,6 +3171,7 @@ function toast(msg) {
 ═══════════════════════════════════════════════════════════ */
 const _DA_HS = 7, _DA_HE = 19, _DA_HT = 12; // ora inizio/fine/totale
 let _drag = null; // stato drag globale
+let _touchHandled = false; // blocca mousedown sintetico dopo touchstart
 
 // Converti posizione pixel X in orario (snap 15 min)
 function _pxToTime(px, rect) {
@@ -3251,11 +3252,16 @@ function _aGridTouch(e) {
 function _aBlockDown(e) {
   if (!currentTech || !currentTech.isAdmin) return;
   if (e.button !== 0) return;
+  // Ignora il mousedown sintetico generato dal browser dopo un touchstart
+  if (_touchHandled) return;
   e.preventDefault(); e.stopPropagation();
   _startBlockDrag(e.currentTarget, e.clientX, e.clientY);
 }
 function _aBlockTouch(e) {
   if (!currentTech || !currentTech.isAdmin) return;
+  // Segnala che il touch è in corso: blocca il mousedown sintetico
+  _touchHandled = true;
+  setTimeout(() => { _touchHandled = false; }, 500);
   // Non avviare drag immediatamente: aspetta che il dito si sposti > 8px
   // Così un semplice tap apre l'appuntamento senza attivare il drag
   const t0 = e.touches[0];
@@ -3527,7 +3533,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.2'; // fix drag touch: soglia movimento 8px prima di avviare drag
+const _APP_VERSION = '2.3'; // fix drag: blocca mousedown sintetico da touch
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
