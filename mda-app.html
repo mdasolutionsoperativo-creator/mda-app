@@ -3252,18 +3252,38 @@ function _aGridTouch(e) {
 function _aBlockDown(e) {
   if (!currentTech || !currentTech.isAdmin) return;
   if (e.button !== 0) return;
-  // Ignora il mousedown sintetico generato dal browser dopo un touchstart
-  if (_touchHandled) return;
+  if (_touchHandled) return; // blocca mousedown sintetico da touch
   e.preventDefault(); e.stopPropagation();
-  _startBlockDrag(e.currentTarget, e.clientX, e.clientY);
+  // Non avviare drag subito: aspetta movimento > 5px (distingue click da trascinamento)
+  const sx = e.clientX, sy = e.clientY;
+  const block = e.currentTarget;
+  let dragStarted = false;
+  function onMove(ev) {
+    if (dragStarted) return;
+    if (Math.abs(ev.clientX - sx) > 5 || Math.abs(ev.clientY - sy) > 5) {
+      dragStarted = true;
+      _startBlockDrag(block, sx, sy);
+    }
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    if (!dragStarted) {
+      // Click senza trascinamento: apri il modale
+      const apptId = block.dataset.apptId;
+      if (apptId) openApptModal(apptId);
+    }
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }
 function _aBlockTouch(e) {
   if (!currentTech || !currentTech.isAdmin) return;
-  // Segnala che il touch è in corso: blocca il mousedown sintetico
+  // preventDefault blocca tutti gli eventi sintetici del browser (mousedown, click)
+  // così _aBlockDown non scatta mai per tocchi
+  e.preventDefault();
   _touchHandled = true;
-  setTimeout(() => { _touchHandled = false; }, 500);
-  // Non avviare drag immediatamente: aspetta che il dito si sposti > 8px
-  // Così un semplice tap apre l'appuntamento senza attivare il drag
+  setTimeout(() => { _touchHandled = false; }, 600);
   const t0 = e.touches[0];
   const sx = t0.clientX, sy = t0.clientY;
   const block = e.currentTarget;
@@ -3271,7 +3291,7 @@ function _aBlockTouch(e) {
   function onMove(ev) {
     if (dragStarted) return;
     const t = ev.touches[0];
-    if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) {
+    if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) {
       dragStarted = true;
       ev.preventDefault(); ev.stopPropagation();
       _startBlockDrag(block, sx, sy);
@@ -3280,6 +3300,12 @@ function _aBlockTouch(e) {
   function onEnd() {
     block.removeEventListener('touchmove', onMove);
     block.removeEventListener('touchend', onEnd);
+    if (!dragStarted) {
+      // Tap senza trascinamento: apri il modale direttamente
+      // (il click sintetico non scatta perché preventDefault è stato chiamato)
+      const apptId = block.dataset.apptId;
+      if (apptId) openApptModal(apptId);
+    }
   }
   block.addEventListener('touchmove', onMove, { passive: false });
   block.addEventListener('touchend', onEnd, { once: true });
@@ -3533,7 +3559,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.3'; // fix drag: blocca mousedown sintetico da touch
+const _APP_VERSION = '2.5'; // fix drag: threshold movimento sia su mouse che su touch
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
