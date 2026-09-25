@@ -14,8 +14,11 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  const p = new URL(e.request.url).pathname;
-  // mda-app.html e root: sempre dalla rete (aggiornamenti immediati)
+  const url = new URL(e.request.url);
+  // NON intercettare mai richieste cross-origin (Google APIs, Drive, Calendar, ecc.)
+  if (url.origin !== self.location.origin) return;
+  // mda-app.html: sempre dalla rete
+  const p = url.pathname;
   if (p === '/mda-app/' || p.endsWith('mda-app.html')) {
     e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
     return;
