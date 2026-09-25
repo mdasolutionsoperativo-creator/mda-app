@@ -3220,14 +3220,31 @@ function _aGridDown(e) {
 function _aGridTouch(e) {
   if (!currentTech || !currentTech.isAdmin) return;
   if (e.target.closest('.agenda-appt-block')) return;
-  e.preventDefault();
-  const touch = e.touches[0];
+  // Aspetta movimento > 8px prima di avviare drag-create (permette scroll orizzontale)
+  const t0 = e.touches[0];
+  const sx = t0.clientX, sy = t0.clientY;
   const grid = e.currentTarget;
-  const rect = grid.getBoundingClientRect();
-  const box = document.createElement('div');
-  box.style.cssText = 'position:absolute;top:4px;bottom:4px;background:rgba(99,102,241,.18);border:2px solid #6366f1;border-radius:6px;pointer-events:none;z-index:10;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#6366f1;white-space:nowrap;padding:0 6px;overflow:hidden;';
-  grid.appendChild(box);
-  _drag = { type: 'create', grid, rect, startX: touch.clientX, box };
+  let dragStarted = false;
+  function onMove(ev) {
+    if (dragStarted) return;
+    const t = ev.touches[0];
+    const dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+      dragStarted = true;
+      ev.preventDefault();
+      const rect = grid.getBoundingClientRect();
+      const box = document.createElement('div');
+      box.style.cssText = 'position:absolute;top:4px;bottom:4px;background:rgba(99,102,241,.18);border:2px solid #6366f1;border-radius:6px;pointer-events:none;z-index:10;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#6366f1;white-space:nowrap;padding:0 6px;overflow:hidden;';
+      grid.appendChild(box);
+      _drag = { type: 'create', grid, rect, startX: sx, box };
+    }
+  }
+  function onEnd() {
+    grid.removeEventListener('touchmove', onMove);
+    grid.removeEventListener('touchend', onEnd);
+  }
+  grid.addEventListener('touchmove', onMove, { passive: false });
+  grid.addEventListener('touchend', onEnd, { once: true });
 }
 
 /* ── DRAG MOVE (click+trascina su blocco appuntamento) ────── */
@@ -3239,9 +3256,27 @@ function _aBlockDown(e) {
 }
 function _aBlockTouch(e) {
   if (!currentTech || !currentTech.isAdmin) return;
-  e.preventDefault(); e.stopPropagation();
-  const touch = e.touches[0];
-  _startBlockDrag(e.currentTarget, touch.clientX, touch.clientY);
+  // Non avviare drag immediatamente: aspetta che il dito si sposti > 8px
+  // Così un semplice tap apre l'appuntamento senza attivare il drag
+  const t0 = e.touches[0];
+  const sx = t0.clientX, sy = t0.clientY;
+  const block = e.currentTarget;
+  let dragStarted = false;
+  function onMove(ev) {
+    if (dragStarted) return;
+    const t = ev.touches[0];
+    if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) {
+      dragStarted = true;
+      ev.preventDefault(); ev.stopPropagation();
+      _startBlockDrag(block, sx, sy);
+    }
+  }
+  function onEnd() {
+    block.removeEventListener('touchmove', onMove);
+    block.removeEventListener('touchend', onEnd);
+  }
+  block.addEventListener('touchmove', onMove, { passive: false });
+  block.addEventListener('touchend', onEnd, { once: true });
 }
 function _startBlockDrag(block, clientX, clientY) {
   const apptId = block.dataset.apptId;
@@ -3492,7 +3527,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.1'; // fix drag non-admin + cliente VARIE
+const _APP_VERSION = '2.2'; // fix drag touch: soglia movimento 8px prima di avviare drag
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
