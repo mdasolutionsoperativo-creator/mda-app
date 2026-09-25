@@ -933,7 +933,8 @@ let CLIENTI = JSON.parse(localStorage.getItem('mda_clienti') || JSON.stringify([
   { id: 'E107', codice: 'E 107', nome: "Stab. Fiema", indirizzo: "Via Giovanni Keplero 4, 20016 Pero (MI)" },
   { id: 'E108', codice: 'E 108', nome: "Uff. P.za SS. Trinità", indirizzo: "Piazza SS. Trinità 6, Milano (MI)" },
   { id: 'E109', codice: 'E 109', nome: "Uff. Proger SS. Trinità", indirizzo: "Piazza SS. Trinità 6, Milano (MI)" },
-  { id: 'E192', codice: 'E 192', nome: "Store Rinascimento", indirizzo: "Via Torino 61, Milano (MI)" }
+  { id: 'E192', codice: 'E 192', nome: "Store Rinascimento", indirizzo: "Via Torino 61, Milano (MI)" },
+  { id: 'VARIE', codice: 'VAR', nome: "VARIE", indirizzo: "" }
 ]));
 
 /* ═══════════════════════════════════════════════════════════
@@ -3205,6 +3206,7 @@ function attachAgendaDragHandlers() {
 
 /* ── DRAG CREATE (click+trascina su cella vuota) ─────────── */
 function _aGridDown(e) {
+  if (!currentTech || !currentTech.isAdmin) return;
   if (e.button !== 0) return;
   if (e.target.closest('.agenda-appt-block')) return;
   e.preventDefault();
@@ -3216,6 +3218,7 @@ function _aGridDown(e) {
   _drag = { type: 'create', grid, rect, startX: e.clientX, box };
 }
 function _aGridTouch(e) {
+  if (!currentTech || !currentTech.isAdmin) return;
   if (e.target.closest('.agenda-appt-block')) return;
   e.preventDefault();
   const touch = e.touches[0];
@@ -3229,11 +3232,13 @@ function _aGridTouch(e) {
 
 /* ── DRAG MOVE (click+trascina su blocco appuntamento) ────── */
 function _aBlockDown(e) {
+  if (!currentTech || !currentTech.isAdmin) return;
   if (e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
   _startBlockDrag(e.currentTarget, e.clientX, e.clientY);
 }
 function _aBlockTouch(e) {
+  if (!currentTech || !currentTech.isAdmin) return;
   e.preventDefault(); e.stopPropagation();
   const touch = e.touches[0];
   _startBlockDrag(e.currentTarget, touch.clientX, touch.clientY);
@@ -3487,7 +3492,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.0'; // drag agenda
+const _APP_VERSION = '2.1'; // fix drag non-admin + cliente VARIE
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
