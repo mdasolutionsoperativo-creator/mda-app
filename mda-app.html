@@ -307,6 +307,9 @@
     /* ─── DATE INPUT ─────────────────────────────────────────── */
     input[type=date].form-control, input[type=time].form-control, input[type=text].form-control { -webkit-appearance: none; }
 
+    /* ─── BLOCCHI AGENDA — disabilita scroll-jacking su touch ── */
+    .agenda-appt-block { touch-action: none; -webkit-user-select: none; user-select: none; }
+
     /* ─── ADMIN HIGHLIGHT ────────────────────────────────────── */
     .admin-banner {
       background: linear-gradient(135deg, #1e3a8a, #1e40af);
@@ -1497,10 +1500,15 @@ function editAppt(id) {
 }
 
 function deleteAppt(id) {
+  let deleted = null;
   const idxE = interventoExtra.findIndex(a => a.id === id);
-  if (idxE !== -1) { interventoExtra.splice(idxE, 1); saveExtra(); }
+  if (idxE !== -1) { deleted = interventoExtra[idxE]; interventoExtra.splice(idxE, 1); saveExtra(); }
   const idxA = appuntamenti.findIndex(a => a.id === id);
-  if (idxA !== -1) { appuntamenti.splice(idxA, 1); saveAppuntamenti(); }
+  if (idxA !== -1) { if (!deleted) deleted = appuntamenti[idxA]; appuntamenti.splice(idxA, 1); saveAppuntamenti(); }
+  // Elimina anche da Google Calendar se l'appuntamento vi era sincronizzato
+  if (deleted?.gcalId && deleted?.tecnico) {
+    gcalDeleteAppt(deleted.gcalId, deleted.tecnico).catch(() => {});
+  }
   renderAgendaList();
   renderHome();
   toast('Intervento eliminato');
@@ -2594,17 +2602,35 @@ async function gcalPushAppt(appt) {
   }
 }
 
+// Elimina un singolo evento da Google Calendar
+async function gcalDeleteAppt(gcalId, techId) {
+  if (!_gcalToken || !gcalId || !techId) return false;
+  const calId = GCAL.CALENDARS[techId];
+  if (!calId) return false;
+  try {
+    const res = await fetch(`${_GCAL_API}/${encodeURIComponent(calId)}/events/${gcalId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${_gcalToken}` }
+    });
+    return res.ok || res.status === 404; // 404 = già eliminato, va bene
+  } catch(e) {
+    console.warn('GCal delete error', e);
+    return false;
+  }
+}
+
 // Export all local appointments that don't have a gcalId yet
 async function gcalSyncAll() {
   if (!_gcalToken) { toast('Connetti prima Google Calendar'); return; }
   const info = document.getElementById('gcal-sync-info');
   info.textContent = 'Sincronizzazione...';
   let ok = 0, err = 0;
-  for (const a of [...appuntamenti, ...interventoExtra]) {
-    if (!a.gcalId) {
-      const success = await gcalPushAppt(a);
-      if (success) ok++; else err++;
-    }
+  const toSync = [...appuntamenti, ...interventoExtra].filter(a => !a.gcalId);
+  for (const a of toSync) {
+    const success = await gcalPushAppt(a);
+    if (success) ok++; else err++;
+    // Pausa per rispettare il rate limit di Google API (max 10 req/sec)
+    await new Promise(r => setTimeout(r, 150));
   }
   info.textContent = err ? `✓ ${ok} esportati · ⚠ ${err} errori` : `✓ ${ok} esportati`;
   toast(err ? `⚠ ${err} errori — controlla la console` : `✅ ${ok} appuntamenti sincronizzati`);
@@ -3279,36 +3305,76 @@ function _aBlockDown(e) {
 }
 function _aBlockTouch(e) {
   if (!currentTech || !currentTech.isAdmin) return;
-  // preventDefault blocca tutti gli eventi sintetici del browser (mousedown, click)
-  // così _aBlockDown non scatta mai per tocchi
+  // preventDefault blocca eventi sintetici mouse (mousedown, click)
   e.preventDefault();
-  _touchHandled = true;
-  setTimeout(() => { _touchHandled = false; }, 600);
+  e.stopPropagation();
+  _touchHandled = true; // rimane true per tutta la sequenza touch
+
   const t0 = e.touches[0];
   const sx = t0.clientX, sy = t0.clientY;
   const block = e.currentTarget;
   let dragStarted = false;
+  let ended = false;
+
+  /* ── Long press (500ms) per avviare il drag ─────────────── */
+  const longPressTimer = setTimeout(() => {
+    if (ended || dragStarted) return;
+    dragStarted = true;
+    block.removeEventListener('touchmove', onMove);
+    block.removeEventListener('touchend',  onEnd);
+    block.removeEventListener('touchcancel', onCancel);
+    if (navigator.vibrate) navigator.vibrate(50); // feedback aptico
+    _startBlockDrag(block, sx, sy);
+    // _touchHandled rimane true; verrà resettato da _aTouchEnd
+  }, 500);
+
   function onMove(ev) {
-    if (dragStarted) return;
+    if (dragStarted || ended) return;
+    ev.preventDefault();
     const t = ev.touches[0];
-    if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) {
-      dragStarted = true;
-      ev.preventDefault(); ev.stopPropagation();
-      _startBlockDrag(block, sx, sy);
+    // Se il dito si sposta oltre 20px prima del long press → non è un drag,
+    // annulla il timer (touch-action:none già impedisce lo scroll sul blocco)
+    if (Math.hypot(t.clientX - sx, t.clientY - sy) > 20) {
+      clearTimeout(longPressTimer);
+      block.removeEventListener('touchmove', onMove);
+      block.removeEventListener('touchend',  onEnd);
+      block.removeEventListener('touchcancel', onCancel);
+      ended = true;
+      setTimeout(() => { _touchHandled = false; }, 300);
     }
   }
+
   function onEnd() {
+    clearTimeout(longPressTimer);
     block.removeEventListener('touchmove', onMove);
-    block.removeEventListener('touchend', onEnd);
+    block.removeEventListener('touchcancel', onCancel);
+    ended = true;
+    // Reset dopo che gli eventi sintetici avranno avuto tempo di arrivare
+    setTimeout(() => { _touchHandled = false; }, 350);
     if (!dragStarted) {
-      // Tap senza trascinamento: apri il modale direttamente
-      // (il click sintetico non scatta perché preventDefault è stato chiamato)
+      // Tap normale: apri il modale
       const apptId = block.dataset.apptId;
       if (apptId) openApptModal(apptId);
     }
   }
+
+  function onCancel() {
+    clearTimeout(longPressTimer);
+    block.removeEventListener('touchmove', onMove);
+    block.removeEventListener('touchend',  onEnd);
+    ended = true;
+    _touchHandled = false;
+    if (_drag && _drag.type === 'move') {
+      // Cleanup drag se cancellato
+      _drag.ghost?.remove();
+      if (_drag.block) _drag.block.style.opacity = '';
+      _drag = null;
+    }
+  }
+
   block.addEventListener('touchmove', onMove, { passive: false });
-  block.addEventListener('touchend', onEnd, { once: true });
+  block.addEventListener('touchend',  onEnd,   { once: true });
+  block.addEventListener('touchcancel', onCancel, { once: true });
 }
 function _startBlockDrag(block, clientX, clientY) {
   const apptId = block.dataset.apptId;
@@ -3372,6 +3438,9 @@ function _dragUpdate(cx, cy) {
 function _aDragEnd(e) { _dragFinish(e.clientX, e.clientY); }
 function _aTouchEnd(e) {
   if (!_drag) return;
+  // Blocca il mousedown sintetico che potrebbe arrivare dopo un long-press drag
+  _touchHandled = true;
+  setTimeout(() => { _touchHandled = false; }, 400);
   const t = e.changedTouches[0];
   _dragFinish(t.clientX, t.clientY);
 }
@@ -3559,7 +3628,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.5'; // fix drag: threshold movimento sia su mouse che su touch
+const _APP_VERSION = '2.6'; // fix drag mobile: long press 500ms; fix deleteAppt→gcal; fix gcalSyncAll rate limit
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
