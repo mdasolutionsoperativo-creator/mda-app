@@ -845,7 +845,7 @@
     </svg>
     Agenda
   </button>
-  <button class="nav-btn" id="nav-intervento" onclick="resetInterventoForm(); showTab('intervento')"
+  <button class="nav-btn" id="nav-intervento" onclick="resetInterventoForm(); showTab('intervento')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
     </svg>
@@ -3799,7 +3799,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.10'; // appuntamenti plurigiornalieri; backup/importa dati; reset completo testing
+const _APP_VERSION = '2.11'; // fix: nuovo SW sw2.js per forzare aggiornamento WebAPK
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
@@ -3908,7 +3908,7 @@ async function forzaAggiornamento() {
    PWA SERVICE WORKER (offline)
 ═══════════════════════════════════════════════════════════ */
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/mda-app/sw.js', { scope: '/mda-app/' })
+  navigator.serviceWorker.register('/mda-app/sw2.js', { scope: '/mda-app/' })
     .then(reg => {
       // Controlla subito se c'è una versione più nuova
       reg.update();
