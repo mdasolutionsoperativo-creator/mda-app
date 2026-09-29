@@ -612,11 +612,20 @@
         <label class="form-label">Cliente</label>
         <select class="form-control" id="int-cliente"></select>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="form-group">
-          <label class="form-label">Data</label>
-          <input type="date" class="form-control" id="int-data">
+          <label class="form-label">Data inizio</label>
+          <input type="date" class="form-control" id="int-data" onchange="onDataInizioChange()">
         </div>
+        <div class="form-group" id="int-data-fine-wrap">
+          <label class="form-label" style="display:flex;align-items:center;gap:6px">
+            Data fine
+            <span style="font-size:10px;color:var(--sub);font-weight:400">(plurigiornaliero)</span>
+          </label>
+          <input type="date" class="form-control" id="int-data-fine" onchange="onDataFineChange()">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:0">
         <div class="form-group">
           <label class="form-label">Ora inizio</label>
           <input type="time" class="form-control" id="int-ora" oninput="autoSetOraFine(this.value)">
@@ -1524,11 +1533,15 @@ function editAppt(id) {
   const noteEl = document.getElementById('int-note');
   if (noteEl) noteEl.value = a.note || '';
 
-  // Nascondi pannelli ricorrenza/squadra e aggiorna UI pulsante salva
+  // Nascondi pannelli ricorrenza/squadra/data-fine in edit mode
   ['int-ricorrenza-panel', 'int-squadra-panel'].forEach(pid => {
     const el = document.getElementById(pid);
     if (el) el.style.display = 'none';
   });
+  const _dfw = document.getElementById('int-data-fine-wrap');
+  if (_dfw) { _dfw.style.display = 'none'; }
+  const _df = document.getElementById('int-data-fine');
+  if (_df) _df.value = '';
   const saveBtn = document.querySelector('#tab-intervento .btn.btn-primary');
   if (saveBtn) saveBtn.textContent = '💾 Aggiorna Intervento';
 
@@ -1749,6 +1762,11 @@ function resetInterventoForm() {
   document.getElementById('int-squadra-btn').style.color = '#64748b';
   document.querySelectorAll('#int-cadenza-chips .chip').forEach(c => c.classList.remove('selected'));
   document.getElementById('int-note').value = '';
+  // Azzera campo data fine plurigiornaliero
+  const dataFineEl = document.getElementById('int-data-fine');
+  if (dataFineEl) dataFineEl.value = '';
+  const dataFineWrap = document.getElementById('int-data-fine-wrap');
+  if (dataFineWrap) dataFineWrap.style.display = 'block';
   // Ripristina titolo e bottone salva
   const saveBtn = document.querySelector('#tab-intervento .btn.btn-primary');
   if (saveBtn) saveBtn.textContent = '💾 Salva Intervento';
@@ -1851,19 +1869,33 @@ function salvaIntervento() {
     });
   }
 
-  // ── Date (ricorrenza) ─────────────────────────────────
+  // ── Date (plurigiornaliero o ricorrenza) ──────────────
   const dates = [data];
-  const ricPanel  = document.getElementById('int-ricorrenza-panel');
-  const ricChipEl = document.querySelector('#int-cadenza-chips .chip.selected');
-  if (ricPanel.style.display !== 'none' && ricChipEl) {
-    const nOcc    = Math.max(2, parseInt(document.getElementById('int-ricorrenza-n').value) || 6);
-    const baseDays   = ricChipEl.dataset.days   ? parseInt(ricChipEl.dataset.days)   : 0;
-    const baseMonths = ricChipEl.dataset.months ? parseInt(ricChipEl.dataset.months) : 0;
-    for (let i = 1; i < nOcc; i++) {
-      const d = new Date(data);
-      if (baseDays)   d.setDate(d.getDate() + baseDays * i);
-      else            d.setMonth(d.getMonth() + baseMonths * i);
-      dates.push(d.toISOString().split('T')[0]);
+  const dataFine = document.getElementById('int-data-fine').value;
+
+  if (dataFine && dataFine > data) {
+    // Modalità plurigiornaliero: genera tutti i giorni da data a dataFine
+    const cur = new Date(data);
+    const end = new Date(dataFine);
+    cur.setDate(cur.getDate() + 1); // il primo giorno è già in dates
+    while (cur <= end) {
+      dates.push(cur.toISOString().split('T')[0]);
+      cur.setDate(cur.getDate() + 1);
+    }
+  } else {
+    // Modalità ricorrenza (solo se data fine non impostata)
+    const ricPanel  = document.getElementById('int-ricorrenza-panel');
+    const ricChipEl = document.querySelector('#int-cadenza-chips .chip.selected');
+    if (ricPanel.style.display !== 'none' && ricChipEl) {
+      const nOcc    = Math.max(2, parseInt(document.getElementById('int-ricorrenza-n').value) || 6);
+      const baseDays   = ricChipEl.dataset.days   ? parseInt(ricChipEl.dataset.days)   : 0;
+      const baseMonths = ricChipEl.dataset.months ? parseInt(ricChipEl.dataset.months) : 0;
+      for (let i = 1; i < nOcc; i++) {
+        const d = new Date(data);
+        if (baseDays)   d.setDate(d.getDate() + baseDays * i);
+        else            d.setMonth(d.getMonth() + baseMonths * i);
+        dates.push(d.toISOString().split('T')[0]);
+      }
     }
   }
 
@@ -3767,7 +3799,26 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.8'; // backup dati + reset completo per testing
+const _APP_VERSION = '2.9'; // appuntamenti plurigiornalieri; backup/importa dati; reset completo testing
+
+// ── Helpers data plurigiornaliero ─────────────────────────
+function onDataInizioChange() {
+  const dataInizio = document.getElementById('int-data').value;
+  const dataFineEl = document.getElementById('int-data-fine');
+  if (dataFineEl && dataFineEl.value && dataFineEl.value <= dataInizio) {
+    dataFineEl.value = ''; // resetta se data fine è prima o uguale a data inizio
+  }
+  if (dataFineEl) dataFineEl.min = dataInizio; // impedisce di selezionare date precedenti
+}
+
+function onDataFineChange() {
+  const dataInizio = document.getElementById('int-data').value;
+  const dataFine   = document.getElementById('int-data-fine').value;
+  if (dataFine && dataInizio && dataFine <= dataInizio) {
+    toast('⚠️ La data fine deve essere successiva alla data inizio');
+    document.getElementById('int-data-fine').value = '';
+  }
+}
 
 function esportaDati() {
   const backup = {
