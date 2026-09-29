@@ -1,12 +1,13 @@
 {
   "name": "MDA Solutions",
-  "short_name": "MDA",
+  "short_name": "MDA Op",
   "description": "App gestione interventi MDA Solutions SRL",
+  "id": "/mda-app/",
   "start_url": "/mda-app/",
   "scope": "/mda-app/",
   "display": "standalone",
   "background_color": "#1e40af",
-  "theme_color": "#1e40af",
+  "theme_color": "#1a3ba0",
   "orientation": "portrait-primary",
   "icons": [
     {
