@@ -568,6 +568,28 @@
           Svuota la cache e ricarica l'app. Gli appuntamenti non vengono persi.
         </p>
       </div>
+
+      <p class="section-title" style="margin-top:14px">🗑️ Reset per Testing</p>
+      <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px;border:1.5px solid #fca5a5">
+        <p style="font-size:12px;color:var(--sub)">Cancella tutti gli appuntamenti locali <strong>e</strong> tutti gli eventi dai calendari Google di tutti i tecnici. Usa prima il backup.</p>
+        <div id="reset-progress" style="display:none;font-size:12px;color:var(--sub);padding:6px 0"></div>
+        <button class="btn-sm" onclick="resetCompletoPertesting()" style="width:100%;background:#ef4444;color:#fff;border:none;font-weight:700">
+          🗑️ Cancella tutto e ricomincia
+        </button>
+      </div>
+
+      <p class="section-title" style="margin-top:14px">💾 Backup Dati</p>
+      <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
+        <p style="font-size:12px;color:var(--sub)">Esporta tutti gli appuntamenti in un file JSON, o ripristinali da un backup precedente.</p>
+        <button class="btn-sm primary" onclick="esportaDati()" style="width:100%">📥 Esporta tutti i dati</button>
+        <label style="width:100%">
+          <span class="btn-sm" style="display:block;text-align:center;cursor:pointer;background:#f1f5f9;color:#374151;border:1.5px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;font-weight:600">
+            📤 Importa da backup
+          </span>
+          <input type="file" accept=".json" onchange="importaDati(this)" style="display:none">
+        </label>
+        <p style="font-size:11px;color:#ef4444">⚠️ L'importazione sovrascrive i dati esistenti.</p>
+      </div>
     </div>
   </div>
 
@@ -2671,6 +2693,71 @@ async function gcalDeleteAppt(gcalId, techId) {
   }
 }
 
+// ── Reset completo per testing ────────────────────────────
+async function resetCompletoPertesting() {
+  const ok = confirm('⚠️ ATTENZIONE\n\nVerranno cancellati:\n• Tutti gli appuntamenti locali\n• Tutti gli eventi da tutti i calendari Google dei tecnici\n\nAssicurati di aver esportato il backup!\n\nProcedere?');
+  if (!ok) return;
+
+  const progress = document.getElementById('reset-progress');
+  progress.style.display = 'block';
+
+  // 1. Cancella dati locali
+  progress.textContent = '🗑️ Cancellazione dati locali...';
+  appuntamenti    = [];
+  interventoExtra = [];
+  saveAppuntamenti();
+  saveExtra();
+  renderAgendaList();
+  renderHome();
+
+  // 2. Cancella eventi GCal (se connesso)
+  if (!_gcalToken) {
+    progress.textContent = '✅ Dati locali cancellati. (GCal non connesso — connetti e ripeti per pulire i calendari)';
+    toast('✅ Dati locali cancellati');
+    return;
+  }
+
+  const calIds = Object.entries(GCAL.CALENDARS);
+  let totDeleted = 0, totErrors = 0;
+
+  for (const [techId, calId] of calIds) {
+    progress.textContent = `🗑️ Calendario ${techId}...`;
+    try {
+      // Raccogli tutti gli eventi (con paginazione)
+      let events = [];
+      let pageToken = null;
+      do {
+        const url = `${_GCAL_API}/${encodeURIComponent(calId)}/events?maxResults=2500&showDeleted=false${pageToken ? '&pageToken=' + pageToken : ''}`;
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${_gcalToken}` } });
+        if (!res.ok) break;
+        const data = await res.json();
+        events = events.concat(data.items || []);
+        pageToken = data.nextPageToken || null;
+      } while (pageToken);
+
+      // Elimina uno per uno con rate limiting
+      for (const ev of events) {
+        const del = await fetch(`${_GCAL_API}/${encodeURIComponent(calId)}/events/${ev.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${_gcalToken}` }
+        });
+        if (del.ok || del.status === 404 || del.status === 410) totDeleted++;
+        else totErrors++;
+        await new Promise(r => setTimeout(r, 150));
+      }
+      progress.textContent = `✅ ${techId}: ${events.length} eventi cancellati`;
+    } catch(e) {
+      console.warn('Reset GCal error', techId, e);
+      totErrors++;
+    }
+  }
+
+  progress.textContent = totErrors
+    ? `⚠️ Reset completato: ${totDeleted} eventi cancellati, ${totErrors} errori`
+    : `✅ Reset completato: ${totDeleted} eventi cancellati da tutti i calendari`;
+  toast(totErrors ? `⚠️ ${totErrors} errori` : `✅ Reset completo — ${totDeleted} eventi cancellati`);
+}
+
 // Export all local appointments that don't have a gcalId yet
 async function gcalSyncAll() {
   if (!_gcalToken) { toast('Connetti prima Google Calendar'); return; }
@@ -3680,7 +3767,51 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.7'; // fix squadra in edit mode; fix redirect→agenda dopo salvataggio
+const _APP_VERSION = '2.8'; // backup dati + reset completo per testing
+
+function esportaDati() {
+  const backup = {
+    versione: _APP_VERSION,
+    esportato: new Date().toISOString(),
+    appuntamenti: appuntamenti || [],
+    interventoExtra: interventoExtra || [],
+    ferie: ferie || [],
+    rapportinoNum: parseInt(localStorage.getItem('mda_rapportino_num') || '1')
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `mda-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('✅ Backup scaricato!');
+}
+
+function importaDati(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.appuntamenti && !data.interventoExtra) {
+        toast('⚠️ File non valido'); return;
+      }
+      if (data.appuntamenti)    { appuntamenti    = data.appuntamenti;    saveAppuntamenti(); }
+      if (data.interventoExtra) { interventoExtra = data.interventoExtra; saveExtra(); }
+      if (data.ferie)           { ferie           = data.ferie;           saveFerie(); }
+      if (data.rapportinoNum)   localStorage.setItem('mda_rapportino_num', data.rapportinoNum);
+      renderAgendaList();
+      renderHome();
+      toast(`✅ Importati: ${(data.appuntamenti||[]).length + (data.interventoExtra||[]).length} appuntamenti`);
+    } catch(err) {
+      toast('⚠️ Errore lettura file');
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
 
 async function forzaAggiornamento() {
   toast('🔄 Pulizia cache in corso...');
