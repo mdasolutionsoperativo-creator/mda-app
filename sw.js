@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mda-cache-v5';
+const CACHE_NAME = 'mda-cache-v6';
 const STATIC = ['/mda-app/icon-192.png', '/mda-app/icon-512.png', '/mda-app/manifest.json'];
 
 self.addEventListener('install', e => {

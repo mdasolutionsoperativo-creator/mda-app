@@ -553,6 +553,22 @@
         </div>
       </div>
     </div>
+
+    <!-- Sezione Aggiornamento App (solo admin) -->
+    <div id="update-section" style="display:none;margin-top:16px">
+      <p class="section-title">🔄 Aggiornamento App</p>
+      <div class="card" style="padding:14px">
+        <div style="font-size:13px;color:var(--sub);margin-bottom:10px">
+          Versione installata: <strong id="app-ver-label"></strong>
+        </div>
+        <button class="btn-sm primary" onclick="forzaAggiornamento()" style="width:100%">
+          🔄 Forza aggiornamento
+        </button>
+        <p style="font-size:11px;color:#9ca3af;margin-top:8px">
+          Svuota la cache e ricarica l'app. Gli appuntamenti non vengono persi.
+        </p>
+      </div>
+    </div>
   </div>
 
   <!-- TAB AGENDA -->
@@ -1032,6 +1048,8 @@ function initMain() {
     document.getElementById('ferie-section').style.display = 'block';
     document.getElementById('ore-section').style.display = 'block';
     document.getElementById('gcal-section').style.display = 'block';
+    document.getElementById('update-section').style.display = 'block';
+    document.getElementById('app-ver-label').textContent = _APP_VERSION;
     // Pre-seleziona mese/anno corrente per il report presenze
     const _now = new Date();
     document.getElementById('sened-mese').value = _now.getMonth() + 1;
@@ -3663,6 +3681,30 @@ function caricaDatiDemo() {
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
 const _APP_VERSION = '2.7'; // fix squadra in edit mode; fix redirect→agenda dopo salvataggio
+
+async function forzaAggiornamento() {
+  toast('🔄 Pulizia cache in corso...');
+  try {
+    // 1. Deregistra il Service Worker
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    // 2. Svuota tutte le cache
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    // 3. Rimuovi versione salvata per forzare il re-check
+    localStorage.removeItem('mda_app_ver');
+    // 4. Ricarica hard
+    window.location.reload(true);
+  } catch(e) {
+    console.warn('forzaAggiornamento error', e);
+    window.location.reload(true);
+  }
+}
+
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
