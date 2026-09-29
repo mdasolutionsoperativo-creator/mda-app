@@ -845,7 +845,7 @@
     </svg>
     Agenda
   </button>
-  <button class="nav-btn" id="nav-intervento" onclick="showTab('intervento')">
+  <button class="nav-btn" id="nav-intervento" onclick="resetInterventoForm(); showTab('intervento')"
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
     </svg>
@@ -3799,7 +3799,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.9'; // appuntamenti plurigiornalieri; backup/importa dati; reset completo testing
+const _APP_VERSION = '2.10'; // appuntamenti plurigiornalieri; backup/importa dati; reset completo testing
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
