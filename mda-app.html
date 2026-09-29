@@ -1760,11 +1760,45 @@ function salvaIntervento() {
       else saveAppuntamenti();
       gcalPushAppt(found);
     }
+
+    // ── Squadra in edit: crea appuntamenti per tecnici aggiuntivi ──
+    const squadraPanelEdit = document.getElementById('int-squadra-panel');
+    if (squadraPanelEdit.style.display !== 'none') {
+      const extraTecnici = [];
+      document.querySelectorAll('#int-squadra-tecnici input[type=checkbox]:checked').forEach(cb => {
+        if (cb.value !== tecnicoId) extraTecnici.push(cb.value);
+      });
+      for (const tId of extraTecnici) {
+        const copia = {
+          id: 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          tecnico: tId,
+          clienteId,
+          data,
+          ora,
+          ora_fine: oraFine || '',
+          tipo_intervento: tipoVal,
+          note,
+          tipo: 'extra',
+          completato: false,
+          creato: new Date().toISOString()
+        };
+        interventoExtra.push(copia);
+        gcalPushAppt(copia);
+      }
+      if (extraTecnici.length > 0) {
+        saveExtra();
+        toast(`✅ Intervento aggiornato + ${extraTecnici.length} tecnico${extraTecnici.length > 1 ? 'i' : ''} aggiunto${extraTecnici.length > 1 ? 'i' : ''} alla squadra!`);
+      } else {
+        toast('✅ Intervento aggiornato!');
+      }
+    } else {
+      toast('✅ Intervento aggiornato!');
+    }
+
     resetInterventoForm();
-    toast('✅ Intervento aggiornato!');
     renderAgendaList();
     renderHome();
-    showTab('home');
+    showTab('agenda');
     return;
   }
 
@@ -1823,7 +1857,7 @@ function salvaIntervento() {
     ? '✅ Intervento salvato!'
     : `✅ ${count} interventi salvati (${dates.length} date × ${tecnicoIds.length} tecnico${tecnicoIds.length > 1 ? 'i' : ''})`;
   toast(msg);
-  showTab('home');
+  showTab('agenda');
 }
 
 function saveAppuntamenti() { localStorage.setItem('mda_appuntamenti', JSON.stringify(appuntamenti)); }
@@ -3628,7 +3662,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.6'; // fix drag mobile: long press 500ms; fix deleteAppt→gcal; fix gcalSyncAll rate limit
+const _APP_VERSION = '2.7'; // fix squadra in edit mode; fix redirect→agenda dopo salvataggio
 (function checkAppVersion() {
   const stored = localStorage.getItem('mda_app_ver');
   if (stored && stored !== _APP_VERSION) {
