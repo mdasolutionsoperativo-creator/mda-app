@@ -1309,19 +1309,30 @@ function renderSchedulerAdmin(dateStr) {
   const technicians = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin);
   const allAppts = getAllAppts().filter(a => a.data === dateStr);
 
-  const H_START = 7, H_END = 19, H_TOTAL = H_END - H_START;
+  // ── Landscape vs portrait ────────────────────────────────────
+  const isLandscape = window.matchMedia('(orientation: landscape)').matches;
+  const H_START  = 7;
+  const H_END    = isLandscape ? 17 : 19;   // landscape: 7–17, portrait: 7–19
+  const H_TOTAL  = H_END - H_START;
+  const TECH_COL = isLandscape ? 44 : 130;  // landscape: solo badge, portrait: badge + nome
+  const GRID_MIN = isLandscape
+    ? Math.max(window.innerWidth - 16, 300) + 'px'
+    : '820px';
+
+  // Aggiorna i globali usati da _pxToTime() per il drag
+  _DA_HS = H_START; _DA_HE = H_END; _DA_HT = H_TOTAL;
 
   // ── Intestazione ore ────────────────────────────────────────
   let timeHeader = '';
   for (let h = H_START; h <= H_END; h++) {
-    timeHeader += `<div style="flex:1;text-align:center;font-size:10px;font-weight:700;color:#94a3b8;padding:5px 0;border-left:1px solid #e2e8f0;">${h}:00</div>`;
+    timeHeader += `<div style="flex:1;text-align:center;font-size:${isLandscape ? 9 : 10}px;font-weight:700;color:#94a3b8;padding:5px 0;border-left:1px solid #e2e8f0;">${h}:00</div>`;
   }
 
   // ── Linee verticali di sfondo per ore ───────────────────────
   let gridLines = '';
   for (let h = 1; h <= H_TOTAL; h++) {
     const pct = (h / H_TOTAL) * 100;
-    const isMid = (H_START + h) === 12 || (H_START + h) === 13; // ora di pranzo
+    const isMid = (H_START + h) === 12 || (H_START + h) === 13;
     gridLines += `<div style="position:absolute;left:${pct.toFixed(2)}%;top:0;bottom:0;width:1px;background:${isMid ? '#e2e8f0' : '#f1f5f9'};pointer-events:none;"></div>`;
   }
 
@@ -1339,7 +1350,6 @@ function renderSchedulerAdmin(dateStr) {
       const cliente = CLIENTI.find(c => c.id === a.clienteId) || { nome: a.clienteNome || '?' };
       const [hh, mm] = (a.ora || '09:00').split(':').map(Number);
       const startH = hh + mm / 60;
-      // Usa ora_fine se disponibile, altrimenti blocco di 1.5h
       let duration = 1.5;
       if (a.ora_fine) {
         const [hf, mf] = a.ora_fine.split(':').map(Number);
@@ -1368,13 +1378,20 @@ function renderSchedulerAdmin(dateStr) {
          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:11px;font-weight:700;color:#d97706;background:rgba(254,243,199,.9);padding:3px 10px;border-radius:20px;white-space:nowrap;z-index:2;border:1.5px solid #fbbf24;">🏖 FERIE</div>`
       : '';
 
+    // Colonna tecnico: in landscape solo badge colorato, in portrait badge + nome
+    const techCell = isLandscape
+      ? `<div style="width:${TECH_COL}px;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:4px;border-right:2px solid #e2e8f0;${feriaOggi ? 'background:#fffbeb;' : ''}">
+           <div class="tech-badge" style="background:${tech.colore};width:30px;height:30px;font-size:10px;flex-shrink:0" title="${tech.nome}">${tech.iniziali}</div>
+         </div>`
+      : `<div style="width:${TECH_COL}px;flex-shrink:0;display:flex;align-items:center;padding:6px 8px;gap:7px;border-right:2px solid #e2e8f0;${feriaOggi ? 'background:#fffbeb;' : ''}">
+           <div class="tech-badge" style="background:${tech.colore};width:28px;height:28px;font-size:10px;flex-shrink:0">${tech.iniziali}</div>
+           <span style="font-size:11px;font-weight:600;color:${feriaOggi ? '#d97706' : '#334155'};line-height:1.3">${tech.nome}${feriaOggi ? '<br><span style="font-size:9px;font-weight:600;color:#d97706">🏖 in ferie</span>' : ''}</span>
+         </div>`;
+
     rows += `
-      <div style="display:flex;border-bottom:1px solid #f1f5f9;min-height:58px;align-items:stretch;">
-        <div style="width:130px;flex-shrink:0;display:flex;align-items:center;padding:6px 8px;gap:7px;border-right:2px solid #e2e8f0;${feriaOggi ? 'background:#fffbeb;' : ''}">
-          <div class="tech-badge" style="background:${tech.colore};width:28px;height:28px;font-size:10px;flex-shrink:0">${tech.iniziali}</div>
-          <span style="font-size:11px;font-weight:600;color:${feriaOggi ? '#d97706' : '#334155'};line-height:1.3">${tech.nome}${feriaOggi ? '<br><span style="font-size:9px;font-weight:600;color:#d97706">🏖 in ferie</span>' : ''}</span>
-        </div>
-        <div class="agenda-row-grid" data-tech-id="${tech.id}" style="flex:1;position:relative;min-height:58px;cursor:crosshair;background:${feriaOggi ? '#fffbeb' : '#fafafa'};">
+      <div style="display:flex;border-bottom:1px solid #f1f5f9;min-height:${isLandscape ? 52 : 58}px;align-items:stretch;">
+        ${techCell}
+        <div class="agenda-row-grid" data-tech-id="${tech.id}" style="flex:1;position:relative;min-height:${isLandscape ? 52 : 58}px;cursor:crosshair;background:${feriaOggi ? '#fffbeb' : '#fafafa'};">
           ${gridLines}
           ${feriaLabel}
           ${blocks || (!feriaOggi ? '<div style="position:absolute;inset:0;display:flex;align-items:center;padding-left:14px;"><span style="font-size:11px;color:#cbd5e1;font-style:italic;">–</span></div>' : '')}
@@ -1388,9 +1405,9 @@ function renderSchedulerAdmin(dateStr) {
       ${totalAppts > 0 ? `${totalAppts} intervento${totalAppts !== 1 ? 'i' : ''} programmato${totalAppts !== 1 ? 'i' : ''}` : 'Nessun intervento'}
     </div>
     <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:12px;background:#fff;">
-      <div style="min-width:820px;">
+      <div style="min-width:${GRID_MIN};">
         <div style="display:flex;border-bottom:2px solid #e2e8f0;">
-          <div style="width:130px;flex-shrink:0;padding:5px 8px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.7px;border-right:2px solid #e2e8f0;display:flex;align-items:center;">Tecnico</div>
+          <div style="width:${TECH_COL}px;flex-shrink:0;padding:5px 8px;font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.7px;border-right:2px solid #e2e8f0;display:flex;align-items:center;">${isLandscape ? '' : 'Tecnico'}</div>
           <div style="flex:1;display:flex;">${timeHeader}</div>
         </div>
         ${rows}
@@ -3366,7 +3383,7 @@ function toast(msg) {
    - initAgendaDragListeners(): chiamato 1 volta in initMain()
    - attachAgendaDragHandlers(): chiamato dopo ogni renderAgendaList() admin
 ═══════════════════════════════════════════════════════════ */
-const _DA_HS = 7, _DA_HE = 19, _DA_HT = 12; // ora inizio/fine/totale
+let _DA_HS = 7, _DA_HE = 19, _DA_HT = 12; // ora inizio/fine/totale (aggiornati da renderSchedulerAdmin)
 let _drag = null; // stato drag globale
 let _touchHandled = false; // blocca mousedown sintetico dopo touchstart
 
@@ -3799,7 +3816,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.12'; // fix: nuovo percorso v2.html per forzare aggiornamento WebAPK
+const _APP_VERSION = '2.13'; // feat: layout landscape agenda
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
@@ -3937,6 +3954,15 @@ if ('serviceWorker' in navigator) {
    INIT
 ═══════════════════════════════════════════════════════════ */
 caricaDatiDemo();
+
+// ── Re-render agenda automatico alla rotazione schermo ────────
+window.matchMedia('(orientation: landscape)').addEventListener('change', () => {
+  setTimeout(() => {
+    if (document.getElementById('tab-agenda').style.display !== 'none') {
+      renderAgendaList();
+    }
+  }, 200);
+});
 </script>
 </body>
 </html>
