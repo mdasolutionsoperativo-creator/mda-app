@@ -984,6 +984,11 @@ let CLIENTI = JSON.parse(localStorage.getItem('mda_clienti') || JSON.stringify([
   { id: 'E108', codice: 'E 108', nome: "Uff. P.za SS. Trinità", indirizzo: "Piazza SS. Trinità 6, Milano (MI)" },
   { id: 'E109', codice: 'E 109', nome: "Uff. Proger SS. Trinità", indirizzo: "Piazza SS. Trinità 6, Milano (MI)" },
   { id: 'E192', codice: 'E 192', nome: "Store Rinascimento", indirizzo: "Via Torino 61, Milano (MI)" },
+  { id: 'C001', codice: 'C 001', nome: "Elettrica System S.r.l.", indirizzo: "Via Pacinotti 35, 20042 Pessano con Bornago (MI)" },
+  { id: 'C002', codice: 'C 002', nome: "Faster Italia S.r.l.", indirizzo: "Via Buozzi 55, San Donato Milanese (MI)" },
+  { id: 'F001', codice: 'F 001', nome: "IRICE2", indirizzo: "Via Grandi 10, San Donato Milanese (MI)" },
+  { id: 'F002', codice: 'F 002', nome: "Cambielli S.p.A.", indirizzo: "Via della Liberazione 14, Peschiera Borromeo (MI)" },
+  { id: 'F003', codice: 'F 003', nome: "Comoli e Ferrari", indirizzo: "Via Piemonte 5/7, 20073 Opera (MI)" },
   { id: 'VARIE', codice: 'VAR', nome: "VARIE", indirizzo: "" }
 ]));
 
@@ -3816,7 +3821,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.13'; // feat: layout landscape agenda
+const _APP_VERSION = '2.14'; // feat: nuovi clienti C001/C002/F001/F002/F003
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
