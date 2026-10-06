@@ -745,17 +745,19 @@
         </div>
         <div class="form-group">
           <label class="form-label">Ora inizio</label>
-          <input type="time" class="form-control" id="rapp-ora-inizio">
+          <input type="time" class="form-control" id="rapp-ora-inizio"
+            onchange="autoCalcOreRapportino()">
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
           <label class="form-label">Ora fine</label>
-          <input type="time" class="form-control" id="rapp-ora-fine">
+          <input type="time" class="form-control" id="rapp-ora-fine"
+            onchange="autoCalcOreRapportino()">
         </div>
         <div class="form-group">
           <label class="form-label">Ore lavorate</label>
-          <input type="text" class="form-control" id="rapp-ore" placeholder="es. 2.5">
+          <input type="text" class="form-control" id="rapp-ore" placeholder="auto da orari">
         </div>
       </div>
     </div>
@@ -1633,6 +1635,21 @@ function deleteAppt(id) {
   toast('Intervento eliminato');
 }
 
+/* ── Auto-calcola ore lavorate nel rapportino da ora inizio/fine ── */
+function autoCalcOreRapportino() {
+  const start = document.getElementById('rapp-ora-inizio').value;
+  const end   = document.getElementById('rapp-ora-fine').value;
+  const oreEl = document.getElementById('rapp-ore');
+  if (!start || !end) return;
+  const [hs, ms] = start.split(':').map(Number);
+  const [he, me] = end.split(':').map(Number);
+  const diff = (he * 60 + me) - (hs * 60 + ms);
+  if (diff <= 0) return;
+  const ore = diff / 60;
+  // Mostra con un decimale solo se necessario (es. 2 invece di 2.0, ma 2.5 rimane 2.5)
+  oreEl.value = Number.isInteger(ore) ? String(ore) : ore.toFixed(1);
+}
+
 /* ── Auto-imposta ora fine (+2h) quando si sceglie ora inizio ── */
 function autoSetOraFine(val) {
   if (!val) return;
@@ -2377,6 +2394,14 @@ async function generaPDF() {
   toast('✅ PDF generato con successo!');
 
   // Salva una copia nell'archivio locale
+  // Se il campo ore è vuoto, calcola automaticamente da oraInizio - oraFine
+  let oreNum = parseFloat(ore) || 0;
+  if (!oreNum && oraInizio && oraFine) {
+    const [hs, ms] = oraInizio.split(':').map(Number);
+    const [he, me] = oraFine.split(':').map(Number);
+    const diff = (he * 60 + me) - (hs * 60 + ms);
+    if (diff > 0) oreNum = Math.round(diff / 60 * 100) / 100;
+  }
   const rapp = {
     id: 'r_' + Date.now(),
     numero: numRapp - 1,
@@ -2384,7 +2409,7 @@ async function generaPDF() {
     cliente: clienteId,
     commessa,
     data,
-    ore: parseFloat(ore) || 0,
+    ore: oreNum,
     tipo: tipoEl ? tipoEl.dataset.val : '-',
     creato: new Date().toISOString()
   };
@@ -4052,7 +4077,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.18'; // fix: email rapportino → manutenzione@mdasolutions.it, footer con indirizzo e P.IVA
+const _APP_VERSION = '2.19'; // fix: calcolo ore rapportino automatico da ora inizio/fine → presenze non più vuote
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
