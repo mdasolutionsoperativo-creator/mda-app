@@ -849,6 +849,11 @@
       <input type="text" class="form-control" id="rapp-email" placeholder="email@cliente.it (opzionale)">
     </div>
 
+    <!-- Stato Drive nella tab rapportino -->
+    <div id="rapp-drive-status" style="margin-bottom:10px;padding:10px 14px;border-radius:10px;font-size:13px;display:flex;align-items:center;gap:10px;cursor:pointer"
+         onclick="if(!_driveToken&&_driveTokenClient)driveConnect()">
+    </div>
+
     <button class="btn btn-primary" onclick="generaPDF()" style="margin-bottom:12px">📄 Genera e Scarica PDF</button>
     <button class="btn btn-green" onclick="inviaPDF()" id="btn-invia-email" style="display:none">✉️ Invia via Email</button>
     <div style="height:20px"></div>
@@ -2381,8 +2386,9 @@ async function generaPDF() {
       uploadRapportinoDrive(pdfBlob, filename);
     } else if (_driveTokenClient) {
       _pendingRappDriveUpload = { blob: pdfBlob, name: filename };
-      toast('⏳ Connessione a Drive in corso, il rapportino verrà caricato automaticamente…');
-      _driveTokenClient.requestAccessToken({ prompt: '' });
+      toast('☁️ Connetti Drive per caricare il rapportino…');
+      // Usa prompt:'consent' per mostrare il popup Google anche se il silent reconnect fallirebbe
+      _driveTokenClient.requestAccessToken({ prompt: 'consent' });
     } else {
       toast('⚠️ Drive non connesso — PDF salvato solo in locale');
     }
@@ -2488,7 +2494,15 @@ function gisLoaded() {
     client_id: GCAL.CLIENT_ID,
     scope: GCAL.SCOPES,
     callback: (resp) => {
-      if (resp.error) { console.error('GCal auth error', resp); return; }
+      if (resp.error) {
+        console.error('GCal auth error', resp);
+        // Se il silent reconnect fallisce, mostra il pulsante di connessione manuale
+        if (currentTech && !currentTech.isAdmin) {
+          techCalUpdateUI(false);
+          toast('📅 Connetti il Calendario per vedere gli appuntamenti');
+        }
+        return;
+      }
       _gcalToken = resp.access_token;
       const exp = Date.now() + (resp.expires_in - 60) * 1000;
       localStorage.setItem('mda_gcal_tok', resp.access_token);
@@ -2508,7 +2522,20 @@ function gisLoaded() {
     client_id: GCAL.CLIENT_ID,
     scope: GCAL.DRIVE_SCOPE,
     callback: (resp) => {
-      if (resp.error) { console.error('Drive auth error', resp); return; }
+      if (resp.error) {
+        console.error('Drive auth error', resp);
+        if (_pendingRappDriveUpload) {
+          // Silent reconnect fallito con rapportino in attesa → tenta connect interattivo (popup Google)
+          toast('☁️ Autorizza Drive per caricare il rapportino…');
+          try { _driveTokenClient.requestAccessToken({ prompt: 'consent' }); } catch(e) {
+            _pendingRappDriveUpload = null;
+            toast('⚠️ Drive non disponibile — rapportino salvato solo in locale');
+          }
+        } else {
+          driveUpdateUI(false); // mostra il banner "Connetti"
+        }
+        return;
+      }
       _driveToken = resp.access_token;
       const exp = Date.now() + (resp.expires_in - 60) * 1000;
       localStorage.setItem('mda_drive_tok', resp.access_token);
@@ -2645,6 +2672,7 @@ function driveUpdateUI(connected) {
     if (btnC) btnC.style.display = '';
     if (btnD) btnD.style.display = 'none';
   }
+  updateRappDriveStatus();
 }
 
 /* ── Config cartelle Drive (admin) ───────────────────────── */
@@ -2679,6 +2707,25 @@ function salvaDriveAllegatiFolder() {
   const statusEl = document.getElementById('drive-folder-allegati-status');
   if (statusEl) { statusEl.style.display = ''; statusEl.textContent = '✅ Cartella allegati configurata (ID: ' + id.slice(0,12) + '…)'; }
   toast('✅ Cartella allegati configurata!');
+}
+
+// Aggiorna il badge Drive nella tab Rapportino
+function updateRappDriveStatus() {
+  const el = document.getElementById('rapp-drive-status');
+  if (!el) return;
+  if (!GCAL.DRIVE_FOLDER_ID) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  if (_driveToken) {
+    el.style.background = '#d1fae5';
+    el.style.color = '#065f46';
+    el.style.border = '1.5px solid #6ee7b7';
+    el.innerHTML = '<span style="font-size:18px">✅</span><span>Drive connesso — il PDF verrà caricato automaticamente</span>';
+  } else {
+    el.style.background = '#fef3c7';
+    el.style.color = '#92400e';
+    el.style.border = '1.5px solid #fcd34d';
+    el.innerHTML = '<span style="font-size:18px">⚠️</span><span><strong>Drive non connesso</strong> — tocca qui per connetterti prima di generare il PDF</span>';
+  }
 }
 
 // Restituisce l'ID cartella da usare per gli allegati tecnici
@@ -4104,7 +4151,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.22'; // fix: cartella allegati accetta URL Drive completo (estrae ID automaticamente); fix agenda incompleta tecnici
+const _APP_VERSION = '2.23'; // fix: Drive/Calendar silent reconnect ora mostra toast+pulsante se fallisce; badge Drive nella tab Rapportino; popup Google al salvataggio rapportino
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
