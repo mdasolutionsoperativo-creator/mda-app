@@ -554,6 +554,29 @@
       </div>
     </div>
 
+    <!-- Sezione config cartelle Drive (solo admin) -->
+    <div id="drive-config-section" style="display:none;margin-top:16px">
+      <p class="section-title">☁️ Google Drive — Cartelle</p>
+      <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:10px">
+        <p style="font-size:12px;color:var(--sub)">Separa la cartella dei rapportini firmati dagli allegati caricati ai tecnici.</p>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:12px">📄 Cartella <strong>Rapportini</strong> (ID attuale)</label>
+          <input type="text" class="form-control" id="drive-folder-rapportini-display"
+            style="font-size:11px;font-family:monospace;background:#f8fafc;color:#94a3b8" readonly>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label" style="font-size:12px">📎 Cartella <strong>Allegati Tecnici</strong> (ID)</label>
+          <input type="text" class="form-control" id="drive-folder-allegati-input"
+            placeholder="Incolla qui l'ID Google Drive" style="font-size:12px;font-family:monospace">
+          <p style="font-size:11px;color:#9ca3af;margin-top:5px">
+            Crea una cartella Drive → clic destro → "Ottieni link" → copia la parte dopo <code>/folders/</code>
+          </p>
+        </div>
+        <button class="btn-sm primary" onclick="salvaDriveAllegatiFolder()" style="width:100%">💾 Salva ID cartella allegati</button>
+        <div id="drive-folder-allegati-status" style="font-size:12px;color:#059669;display:none"></div>
+      </div>
+    </div>
+
     <!-- Sezione Aggiornamento App (solo admin) -->
     <div id="update-section" style="display:none;margin-top:16px">
       <p class="section-title">🔄 Aggiornamento App</p>
@@ -909,8 +932,11 @@ const GCAL = {
   API_KEY:          '',
   SCOPES:           'https://www.googleapis.com/auth/calendar',
   DRIVE_SCOPE:      'https://www.googleapis.com/auth/drive.file',
-  // ↓ Incolla qui l'ID della cartella "MDA Rapportini" su Google Drive
+  // ↓ Cartella "MDA Rapportini" su Google Drive (solo PDF rapportini firmati)
   DRIVE_FOLDER_ID:  '1VOZkHvI7lkqqzGwLbBBz9RL_ZgVAevpg',
+  // ↓ Cartella "Allegati Tecnici" su Google Drive (file allegati agli appuntamenti)
+  //   Se vuoto, usa DRIVE_FOLDER_ID come fallback temporaneo
+  DRIVE_ATTACH_FOLDER_ID: '',
   DISCOVERY_DOC:    'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
   CALENDARS: {
     matteo: 'bbd2befb931d279728303622db5db4ca59cba1e343ffadfdb30c31ff5afb2d5f@group.calendar.google.com',
@@ -1084,7 +1110,9 @@ function initMain() {
     document.getElementById('ferie-section').style.display = 'block';
     document.getElementById('ore-section').style.display = 'block';
     document.getElementById('gcal-section').style.display = 'block';
+    document.getElementById('drive-config-section').style.display = 'block';
     document.getElementById('update-section').style.display = 'block';
+    initDriveConfigUI();
     document.getElementById('app-ver-label').textContent = _APP_VERSION;
     // Pre-seleziona mese/anno corrente per il report presenze
     const _now = new Date();
@@ -1640,6 +1668,29 @@ function getAllAppts() {
   return [...appuntamenti, ...interventoExtra];
 }
 
+// Restituisce tutti gli appuntamenti della stessa squadra (stesso cliente + data + ora)
+// escludendo l'appuntamento stesso passato come riferimento
+function getSquadra(appt) {
+  return getAllAppts().filter(x =>
+    x.id !== appt.id &&
+    x.clienteId === appt.clienteId &&
+    x.data     === appt.data &&
+    x.ora      === appt.ora
+  );
+}
+
+// Salva un array di appuntamenti modificati (può appartenere a entrambi gli store)
+function saveApptArray(appts) {
+  let needSaveExtra = false;
+  let needSaveAppts = false;
+  for (const a of appts) {
+    if (interventoExtra.find(x => x.id === a.id)) needSaveExtra = true;
+    else needSaveAppts = true;
+  }
+  if (needSaveExtra) saveExtra();
+  if (needSaveAppts) saveAppuntamenti();
+}
+
 function toggleCompletato(id) {
   let found = appuntamenti.find(a => a.id === id);
   if (found) { found.completato = !found.completato; saveAppuntamenti(); gcalPushAppt(found); }
@@ -1862,6 +1913,9 @@ function salvaIntervento() {
     let found = interventoExtra.find(a => a.id === editingApptId);
     if (!found) found = appuntamenti.find(a => a.id === editingApptId);
     if (found) {
+      // Cattura i compagni di squadra PRIMA di cambiare data/ora (sono la chiave di lookup)
+      const squadra = getSquadra(found);
+
       found.tecnico = tecnicoId;
       found.clienteId = clienteId;
       found.data = data;
@@ -1873,6 +1927,23 @@ function salvaIntervento() {
       if (interventoExtra.find(a => a.id === editingApptId)) saveExtra();
       else saveAppuntamenti();
       gcalPushAppt(found);
+
+      // ── Propaga modifiche a tutta la squadra ───────────
+      if (squadra.length > 0) {
+        for (const comp of squadra) {
+          // Aggiorna i campi condivisi (NON il tecnico — ognuno mantiene il proprio)
+          comp.data           = data;
+          comp.ora            = ora;
+          comp.ora_fine       = oraFine || '';
+          comp.tipo_intervento = tipoVal;
+          comp.note           = note;
+          if (_gcalToken) gcalPushAppt(comp).catch(() => {});
+        }
+        saveApptArray(squadra);
+        toast(`✅ Intervento aggiornato e propagato a ${squadra.length} compagn${squadra.length > 1 ? 'i' : 'o'} di squadra!`);
+      } else {
+        toast('✅ Intervento aggiornato!');
+      }
     }
 
     // ── Squadra in edit: crea appuntamenti per tecnici aggiuntivi ──
@@ -1901,12 +1972,7 @@ function salvaIntervento() {
       }
       if (extraTecnici.length > 0) {
         saveExtra();
-        toast(`✅ Intervento aggiornato + ${extraTecnici.length} tecnico${extraTecnici.length > 1 ? 'i' : ''} aggiunto${extraTecnici.length > 1 ? 'i' : ''} alla squadra!`);
-      } else {
-        toast('✅ Intervento aggiornato!');
       }
-    } else {
-      toast('✅ Intervento aggiornato!');
     }
 
     resetInterventoForm();
@@ -2542,10 +2608,45 @@ function driveUpdateUI(connected) {
   }
 }
 
+/* ── Config cartelle Drive (admin) ───────────────────────── */
+function initDriveConfigUI() {
+  const rappEl = document.getElementById('drive-folder-rapportini-display');
+  if (rappEl) rappEl.value = GCAL.DRIVE_FOLDER_ID;
+  const attEl = document.getElementById('drive-folder-allegati-input');
+  if (attEl) {
+    const saved = localStorage.getItem('mda_drive_attach_folder') || GCAL.DRIVE_ATTACH_FOLDER_ID;
+    attEl.value = saved;
+  }
+  const statusEl = document.getElementById('drive-folder-allegati-status');
+  if (statusEl) {
+    const saved = localStorage.getItem('mda_drive_attach_folder') || GCAL.DRIVE_ATTACH_FOLDER_ID;
+    if (saved) {
+      statusEl.style.display = '';
+      statusEl.textContent = '✅ Cartella allegati configurata';
+    }
+  }
+}
+
+function salvaDriveAllegatiFolder() {
+  const el = document.getElementById('drive-folder-allegati-input');
+  if (!el) return;
+  const id = el.value.trim();
+  if (!id) { toast('⚠️ Inserisci l\'ID della cartella'); return; }
+  localStorage.setItem('mda_drive_attach_folder', id);
+  const statusEl = document.getElementById('drive-folder-allegati-status');
+  if (statusEl) { statusEl.style.display = ''; statusEl.textContent = '✅ Cartella allegati salvata!'; }
+  toast('✅ Cartella allegati configurata!');
+}
+
+// Restituisce l'ID cartella da usare per gli allegati tecnici
+function _driveAttachFolderId() {
+  return localStorage.getItem('mda_drive_attach_folder') || GCAL.DRIVE_ATTACH_FOLDER_ID || GCAL.DRIVE_FOLDER_ID;
+}
+
 /* ── Allegati appuntamento ─────────────────────────────── */
 function renderAllegatiSection(a) {
   const allegati = a.allegati || [];
-  const canUpload = currentTech.isAdmin && _driveToken && GCAL.DRIVE_FOLDER_ID;
+  const canUpload = currentTech.isAdmin && _driveToken && (GCAL.DRIVE_FOLDER_ID || _driveAttachFolderId());
   const canDelete = currentTech.isAdmin;
 
   const listHTML = allegati.length
@@ -2581,7 +2682,8 @@ async function uploadAllegatoDrive(inputEl, apptId) {
   const file = inputEl.files[0];
   if (!file) return;
   if (!_driveToken) { toast('⚠️ Connetti Google Drive per allegare file'); return; }
-  if (!GCAL.DRIVE_FOLDER_ID) { toast('⚠️ Cartella Drive non configurata'); return; }
+  const attachFolderId = _driveAttachFolderId();
+  if (!attachFolderId) { toast('⚠️ Cartella Drive non configurata'); return; }
 
   // Disabilita label durante upload
   const lbl = document.getElementById('lbl-allegato-' + apptId);
@@ -2590,7 +2692,7 @@ async function uploadAllegatoDrive(inputEl, apptId) {
 
   const metadata = {
     name: file.name,
-    parents: [GCAL.DRIVE_FOLDER_ID],
+    parents: [attachFolderId],   // ← cartella allegati (separata dai rapportini)
     mimeType: file.type || 'application/octet-stream'
   };
   const form = new FormData();
@@ -2618,7 +2720,7 @@ async function uploadAllegatoDrive(inputEl, apptId) {
       body: JSON.stringify({ role: 'reader', type: 'anyone' })
     }).catch(() => {});
 
-    // Salva nell'appuntamento
+    // Salva nell'appuntamento principale
     const idxA = appuntamenti.findIndex(x => x.id === apptId);
     const idxE = interventoExtra.findIndex(x => x.id === apptId);
     const appt = idxA !== -1 ? appuntamenti[idxA] : (idxE !== -1 ? interventoExtra[idxE] : null);
@@ -2626,11 +2728,23 @@ async function uploadAllegatoDrive(inputEl, apptId) {
       if (!appt.allegati) appt.allegati = [];
       appt.allegati.push({ id: driveFile.id, nome: driveFile.name, url: driveFile.webViewLink });
       if (idxA !== -1) saveAppuntamenti(); else saveExtra();
+      if (_gcalToken) gcalPushAppt(appt).catch(() => {});
+
+      // Propaga lo stesso allegato a tutta la squadra
+      const squadra = getSquadra(appt);
+      for (const comp of squadra) {
+        if (!comp.allegati) comp.allegati = [];
+        comp.allegati.push({ id: driveFile.id, nome: driveFile.name, url: driveFile.webViewLink });
+        if (_gcalToken) gcalPushAppt(comp).catch(() => {});
+      }
+      if (squadra.length > 0) saveApptArray(squadra);
+
       renderAgendaList();
       openApptModal(apptId);
-      toast('📎 Allegato aggiunto!');
-      // Aggiorna GCal con i nuovi allegati così i tecnici li vedono dopo la sync
-      if (_gcalToken) gcalPushAppt(appt).catch(() => {});
+      const msg = squadra.length > 0
+        ? `📎 Allegato aggiunto e condiviso con ${squadra.length} compagn${squadra.length > 1 ? 'i' : 'o'} di squadra!`
+        : '📎 Allegato aggiunto!';
+      toast(msg);
     }
   } catch(e) {
     toast('⚠️ Errore upload allegato');
@@ -2643,13 +2757,30 @@ function rimuoviAllegato(apptId, idx) {
   const idxE = interventoExtra.findIndex(x => x.id === apptId);
   const appt = idxA !== -1 ? appuntamenti[idxA] : (idxE !== -1 ? interventoExtra[idxE] : null);
   if (!appt || !appt.allegati) return;
+
+  // Tieni l'ID Drive per propagare la rimozione alla squadra
+  const removedDriveId = appt.allegati[idx]?.id;
   appt.allegati.splice(idx, 1);
   if (idxA !== -1) saveAppuntamenti(); else saveExtra();
+  if (_gcalToken) gcalPushAppt(appt).catch(() => {});
+
+  // Propaga la rimozione a tutta la squadra (stesso allegato per driveId)
+  if (removedDriveId) {
+    const squadra = getSquadra(appt);
+    for (const comp of squadra) {
+      if (!comp.allegati) continue;
+      const compIdx = comp.allegati.findIndex(al => al.id === removedDriveId);
+      if (compIdx !== -1) {
+        comp.allegati.splice(compIdx, 1);
+        if (_gcalToken) gcalPushAppt(comp).catch(() => {});
+      }
+    }
+    if (squadra.length > 0) saveApptArray(squadra);
+  }
+
   renderAgendaList();
   openApptModal(apptId);
   toast('Allegato rimosso');
-  // Aggiorna GCal
-  if (_gcalToken) gcalPushAppt(appt).catch(() => {});
 }
 
 async function uploadRapportinoDrive(pdfBlob, filename) {
@@ -3921,7 +4052,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.16'; // fix: squadra visibile, reset form intervento, auto-connect Calendar+Drive
+const _APP_VERSION = '2.17'; // feat: cartella Drive allegati separata, propagazione modifiche a tutta la squadra
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
