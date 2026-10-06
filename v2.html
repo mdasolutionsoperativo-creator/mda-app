@@ -2555,6 +2555,14 @@ function gisLoaded() {
         }
         return;
       }
+      // Verifica che Google abbia concesso esattamente lo scope richiesto (non drive.file al posto di drive)
+      const grantedScopes = (resp.scope || '').split(' ');
+      if (!grantedScopes.includes(GCAL.DRIVE_SCOPE)) {
+        console.error('Drive: scope concesso non corrisponde', resp.scope, 'richiesto', GCAL.DRIVE_SCOPE);
+        driveUpdateUI(false);
+        toast('⚠️ Drive: autorizzazione incompleta — tocca "Connetti" e accetta tutti i permessi richiesti');
+        return;
+      }
       _driveToken = resp.access_token;
       const exp = Date.now() + (resp.expires_in - 60) * 1000;
       localStorage.setItem('mda_drive_tok', resp.access_token);
@@ -2825,28 +2833,45 @@ async function uploadAllegatoDrive(inputEl, apptId) {
   if (lbl) lbl.style.opacity = '0.5';
   toast('⏳ Caricamento allegato…');
 
-  const metadata = {
-    name: file.name,
-    parents: [attachFolderId],   // ← cartella allegati (separata dai rapportini)
-    mimeType: file.type || 'application/octet-stream'
-  };
-  const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-  form.append('file', file);
-
+  // Upload in due step (come rapportini) per evitare problemi FormData/multipart su Android
   try {
-    const resp = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',
-      { method: 'POST', headers: { Authorization: `Bearer ${_driveToken}` }, body: form }
+    // Step 1: crea il record metadati
+    const metaResp = await fetch(
+      'https://www.googleapis.com/drive/v3/files',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: file.name,
+          parents: [attachFolderId],   // ← cartella allegati (separata dai rapportini)
+          mimeType: file.type || 'application/octet-stream'
+        })
+      }
     );
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      if (resp.status === 401) { _driveToken = null; localStorage.removeItem('mda_drive_tok'); driveUpdateUI(false); toast('⚠️ Sessione Drive scaduta — riconnetti'); }
-      else toast('⚠️ Upload fallito');
+    if (!metaResp.ok) {
+      const err = await metaResp.json().catch(() => ({}));
+      console.error('Drive allegato create error', metaResp.status, err);
+      if (metaResp.status === 401) { _driveTokenInvalid('⚠️ Sessione Drive scaduta — riconnetti'); }
+      else if (metaResp.status === 403) { _driveTokenInvalid(null); toast('⚠️ Drive: permessi insufficienti — vai in Impostazioni e riconnetti'); }
+      else { toast(`⚠️ Upload allegato fallito (${metaResp.status})`); }
       if (lbl) lbl.style.opacity = '1';
       return;
     }
-    const driveFile = await resp.json();
+    const created = await metaResp.json();
+    const fileId = created.id;
+    // Step 2: carica il contenuto del file
+    const uploadResp = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,webViewLink`,
+      { method: 'PATCH', headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': file.type || 'application/octet-stream' }, body: file }
+    );
+    if (!uploadResp.ok) {
+      console.error('Drive allegato upload content error', uploadResp.status);
+      fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${_driveToken}` } }).catch(() => {});
+      toast(`⚠️ Upload allegato fallito (${uploadResp.status})`);
+      if (lbl) lbl.style.opacity = '1';
+      return;
+    }
+    const driveFile = await uploadResp.json();
 
     // Rendi pubblico con link
     await fetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}/permissions`, {
@@ -4268,7 +4293,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.26'; // fix: scope check Drive anche quando mda_drive_scope è null (token pre-v2.25); upload PDF in due step senza FormData; no silent re-auth dopo scope mismatch
+const _APP_VERSION = '2.27'; // fix: verifica scope concesso da Google (resp.scope) nella callback Drive; uploadAllegatoDrive riscritto in due step come rapportini (no FormData su Android)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
