@@ -2620,13 +2620,24 @@ function _gcalSilentRefresh() {
 function _driveTryRestore() {
   if (!_gisReady) return;
 
-  // Se lo scope Drive è cambiato dall'ultima autorizzazione, invalida il token vecchio
-  // (es. da drive.file a drive) — l'utente dovrà ri-autorizzare una volta sola
+  // Invalida il token se:
+  //  a) scope salvato ≠ scope corrente (es. drive.file → drive)
+  //  b) token esiste ma scope non è mai stato salvato (token pre-v2.25 con scope ignoto)
+  // In entrambi i casi l'utente deve ri-autorizzare manualmente — NON tentare silent re-auth
+  // perché Google potrebbe restituire silenziosamente il vecchio scope.
   const storedScope = localStorage.getItem('mda_drive_scope');
-  if (storedScope && storedScope !== GCAL.DRIVE_SCOPE) {
+  const existingTok = localStorage.getItem('mda_drive_tok');
+  const scopeOk = storedScope === GCAL.DRIVE_SCOPE;
+  if (existingTok && !scopeOk) {
     localStorage.removeItem('mda_drive_tok');
     localStorage.removeItem('mda_drive_exp');
     localStorage.removeItem('mda_drive_scope');
+    driveUpdateUI(false);
+    // Mostra toast esplicativo solo ai tecnici non-admin (l'admin vede già il banner Drive)
+    if (currentTech && !currentTech.isAdmin && GCAL.DRIVE_FOLDER_ID) {
+      setTimeout(() => toast('☁️ Drive: va ri-autorizzato — tocca il banner arancione nel Rapportino', 5000), 800);
+    }
+    return; // Non fare silent re-auth: il token fresco arriverà solo quando l'utente tocca "Connetti"
   }
 
   const tok = localStorage.getItem('mda_drive_tok');
@@ -2636,7 +2647,7 @@ function _driveTryRestore() {
     driveUpdateUI(true);
   } else if (currentTech && _driveTokenClient && GCAL.DRIVE_FOLDER_ID) {
     // Token assente o scaduto: richiedi silenziosamente.
-    // Se già autorizzato → nessun popup; se prima volta → Google mostra il consenso.
+    // Sicuri che lo scope è corretto (passato il check sopra), il silent non darà scope sbagliato.
     _driveTokenClient.requestAccessToken({ prompt: '' });
   }
 }
@@ -2907,58 +2918,49 @@ function rimuoviAllegato(apptId, idx) {
   toast('Allegato rimosso');
 }
 
+// Helper: invalida token Drive e aggiorna UI
+function _driveTokenInvalid(reason) {
+  _driveToken = null;
+  localStorage.removeItem('mda_drive_tok');
+  localStorage.removeItem('mda_drive_exp');
+  localStorage.removeItem('mda_drive_scope');
+  driveUpdateUI(false);
+  if (reason) toast(reason);
+}
+
 async function uploadRapportinoDrive(pdfBlob, filename) {
   if (!_driveToken) return; // non connesso, skip silenzioso
   if (!GCAL.DRIVE_FOLDER_ID) return; // non configurato
 
-  const metadata = {
-    name: filename,
-    parents: [GCAL.DRIVE_FOLDER_ID],
-    mimeType: 'application/pdf'
-  };
-
-  const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-  form.append('file', pdfBlob);
+  // Upload in due step per evitare problemi con FormData/multipart su alcuni browser mobile:
+  //   Step 1: crea il file con i metadati (JSON) → ottieni fileId
+  //   Step 2: carica il contenuto binario (PDF) con PATCH
 
   try {
-    const resp = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',
+    // ── STEP 1: crea il record metadati ──────────────────────────────
+    const metaResp = await fetch(
+      'https://www.googleapis.com/drive/v3/files',
       {
         method: 'POST',
-        headers: { Authorization: `Bearer ${_driveToken}` },
-        body: form
+        headers: {
+          Authorization: `Bearer ${_driveToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: filename,
+          parents: [GCAL.DRIVE_FOLDER_ID],
+          mimeType: 'application/pdf'
+        })
       }
     );
 
-    if (resp.ok) {
-      const file = await resp.json();
-      console.log('Drive upload OK:', file.webViewLink);
-      toast('☁️ Rapportino caricato su Drive!');
-      // Aggiorna il link nell'archivio locale
-      const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
-      if (archivio.length > 0) {
-        archivio[archivio.length - 1].driveUrl = file.webViewLink;
-        archivio[archivio.length - 1].driveId  = file.id;
-        localStorage.setItem('mda_rapportini', JSON.stringify(archivio));
-      }
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      if (resp.status === 401) {
-        // Token scaduto → pulisci e avvisa
-        _driveToken = null;
-        localStorage.removeItem('mda_drive_tok');
-        localStorage.removeItem('mda_drive_exp');
-        localStorage.removeItem('mda_drive_scope');
-        driveUpdateUI(false);
-        toast('⚠️ Sessione Drive scaduta — riconnetti Google Drive');
-      } else if (resp.status === 403) {
-        // Permessi insufficienti (scope vecchio o cartella non accessibile) → ri-autorizza
-        _driveToken = null;
-        localStorage.removeItem('mda_drive_tok');
-        localStorage.removeItem('mda_drive_exp');
-        localStorage.removeItem('mda_drive_scope');
-        driveUpdateUI(false);
+    if (!metaResp.ok) {
+      const err = await metaResp.json().catch(() => ({}));
+      console.error('Drive create error', metaResp.status, err);
+      if (metaResp.status === 401) {
+        _driveTokenInvalid('⚠️ Sessione Drive scaduta — riconnetti Google Drive');
+      } else if (metaResp.status === 403) {
+        _driveTokenInvalid(null);
         if (_driveTokenClient) {
           _pendingRappDriveUpload = { blob: pdfBlob, name: filename };
           toast('☁️ Serve una nuova autorizzazione Drive — tocca OK nel popup Google…');
@@ -2967,16 +2969,54 @@ async function uploadRapportinoDrive(pdfBlob, filename) {
             toast('⚠️ Drive non autorizzato — rapportino salvato solo localmente');
           }
         } else {
-          toast('⚠️ Upload Drive negato (403) — vai su Impostazioni e riconnetti Drive');
+          toast('⚠️ Drive: permessi insufficienti (403) — vai in Impostazioni e riconnetti');
         }
       } else {
-        console.error('Drive upload error', resp.status, err);
-        toast(`⚠️ Upload Drive fallito (${resp.status}) — rapportino salvato solo localmente`);
+        toast(`⚠️ Drive errore (${metaResp.status}) — rapportino salvato solo localmente`);
       }
+      return;
     }
+
+    const created = await metaResp.json();
+    const fileId = created.id;
+
+    // ── STEP 2: carica il contenuto PDF ──────────────────────────────
+    const uploadResp = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,webViewLink`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${_driveToken}`,
+          'Content-Type': 'application/pdf'
+        },
+        body: pdfBlob
+      }
+    );
+
+    if (uploadResp.ok) {
+      const file = await uploadResp.json();
+      console.log('Drive upload OK:', file.webViewLink);
+      toast('☁️ Rapportino caricato su Drive!');
+      // Aggiorna il link nell'archivio locale
+      const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+      if (archivio.length > 0) {
+        archivio[archivio.length - 1].driveUrl = file.webViewLink || file.webContentLink || '';
+        archivio[archivio.length - 1].driveId  = file.id;
+        localStorage.setItem('mda_rapportini', JSON.stringify(archivio));
+      }
+    } else {
+      const err2 = await uploadResp.json().catch(() => ({}));
+      console.error('Drive upload content error', uploadResp.status, err2);
+      // Il file stub è stato creato ma il contenuto non è stato caricato — prova a cancellarlo
+      fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${_driveToken}` }
+      }).catch(() => {});
+      toast(`⚠️ Upload Drive fallito (${uploadResp.status}) — rapportino salvato solo localmente`);
+    }
+
   } catch (e) {
     console.error('Drive upload exception', e);
-    // Mostra il messaggio d'errore effettivo per debugging
+    // Mostra il messaggio d'errore effettivo per diagnostica
     toast(`⚠️ Upload Drive fallito — ${e?.message || 'errore di rete'}`);
   }
 }
@@ -4228,7 +4268,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.25'; // fix: scope version check Drive (forza re-auth se scope cambiato); dedup agenda (rimuove duplicati gcalId); 403 handler upload
+const _APP_VERSION = '2.26'; // fix: scope check Drive anche quando mda_drive_scope è null (token pre-v2.25); upload PDF in due step senza FormData; no silent re-auth dopo scope mismatch
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
