@@ -910,7 +910,7 @@ const CONFIG = {
   azienda: {
     nome: 'MDA SOLUTIONS SRL',
     telefono: '',
-    email: 'mdasolutions.operativo@gmail.com',
+    email: 'manutenzione@mdasolutions.it',
     indirizzo: ''
   },
   tecnici: {
@@ -2347,7 +2347,7 @@ async function generaPDF() {
 
   // ─── FOOTER ──────────────────────────────────────────
   doc.setFontSize(7); doc.setTextColor(150,150,150);
-  doc.text('MDA SOLUTIONS SRL — Documento generato il ' + new Date().toLocaleString('it-IT'), PW/2, PH - 8, {align:'center'});
+  doc.text('MDA SOLUTIONS SRL  |  V. B. Buozzi 55, San Donato Milanese 20097 Milano  |  P. IVA 12111390964  |  Documento generato il ' + new Date().toLocaleString('it-IT'), PW/2, PH - 8, {align:'center'});
   doc.setDrawColor(219,234,254);
   doc.line(M, PH - 12, PW - M, PH - 12);
 
@@ -4052,7 +4052,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.17'; // feat: cartella Drive allegati separata, propagazione modifiche a tutta la squadra
+const _APP_VERSION = '2.18'; // fix: email rapportino → manutenzione@mdasolutions.it, footer con indirizzo e P.IVA
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
