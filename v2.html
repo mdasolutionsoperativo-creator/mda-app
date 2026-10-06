@@ -2375,9 +2375,17 @@ async function generaPDF() {
   doc.save(filename);
 
   // Upload automatico su Google Drive (se connesso)
-  if (_driveToken && GCAL.DRIVE_FOLDER_ID) {
+  if (GCAL.DRIVE_FOLDER_ID) {
     const pdfBlob = doc.output('blob');
-    uploadRapportinoDrive(pdfBlob, filename);
+    if (_driveToken) {
+      uploadRapportinoDrive(pdfBlob, filename);
+    } else if (_driveTokenClient) {
+      _pendingRappDriveUpload = { blob: pdfBlob, name: filename };
+      toast('⏳ Connessione a Drive in corso, il rapportino verrà caricato automaticamente…');
+      _driveTokenClient.requestAccessToken({ prompt: '' });
+    } else {
+      toast('⚠️ Drive non connesso — PDF salvato solo in locale');
+    }
   }
 
   // Incrementa numero rapportino
@@ -2464,7 +2472,7 @@ let _tokenClient = null;
 const _GCAL_API = 'https://www.googleapis.com/calendar/v3/calendars';
 
 // ── Drive ─────────────────────────────────────────────────
-let _driveTokenClient = null, _driveToken = null;
+let _driveTokenClient = null, _driveToken = null, _pendingRappDriveUpload = null;
 let _openApptModalId = null; // tiene traccia del modal aperto per aggiornarlo dopo Drive connect
 
 function gapiLoaded() {
@@ -2509,6 +2517,12 @@ function gisLoaded() {
       toast('☁️ Google Drive connesso!');
       // Aggiorna il modal appuntamento aperto (se presente) per mostrare il pulsante allegati
       if (_openApptModalId) openApptModal(_openApptModalId);
+      // Upload rapportino in sospeso (se il PDF è stato generato prima della connessione Drive)
+      if (_pendingRappDriveUpload) {
+        const { blob, name } = _pendingRappDriveUpload;
+        _pendingRappDriveUpload = null;
+        uploadRapportinoDrive(blob, name);
+      }
     }
   });
 
@@ -4077,7 +4091,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.19'; // fix: calcolo ore rapportino automatico da ora inizio/fine → presenze non più vuote
+const _APP_VERSION = '2.20'; // fix: upload rapportino Drive ora funziona anche se Drive non era connesso al momento del salvataggio (Abramo, Senny)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
