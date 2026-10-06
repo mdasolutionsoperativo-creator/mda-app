@@ -2669,17 +2669,25 @@ function initDriveConfigUI() {
 function salvaDriveAllegatiFolder() {
   const el = document.getElementById('drive-folder-allegati-input');
   if (!el) return;
-  const id = el.value.trim();
-  if (!id) { toast('⚠️ Inserisci l\'ID della cartella'); return; }
+  let raw = el.value.trim();
+  if (!raw) { toast('⚠️ Inserisci l\'ID della cartella'); return; }
+  // Accetta sia l'ID diretto sia l'URL completo Drive — estrae automaticamente l'ID
+  const urlMatch = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  const id = urlMatch ? urlMatch[1] : raw;
+  el.value = id; // mostra l'ID estratto nel campo
   localStorage.setItem('mda_drive_attach_folder', id);
   const statusEl = document.getElementById('drive-folder-allegati-status');
-  if (statusEl) { statusEl.style.display = ''; statusEl.textContent = '✅ Cartella allegati salvata!'; }
+  if (statusEl) { statusEl.style.display = ''; statusEl.textContent = '✅ Cartella allegati configurata (ID: ' + id.slice(0,12) + '…)'; }
   toast('✅ Cartella allegati configurata!');
 }
 
 // Restituisce l'ID cartella da usare per gli allegati tecnici
+// Se in localStorage è stato salvato un URL completo Drive, estrae l'ID automaticamente
 function _driveAttachFolderId() {
-  return localStorage.getItem('mda_drive_attach_folder') || GCAL.DRIVE_ATTACH_FOLDER_ID || GCAL.DRIVE_FOLDER_ID;
+  let raw = localStorage.getItem('mda_drive_attach_folder') || GCAL.DRIVE_ATTACH_FOLDER_ID || GCAL.DRIVE_FOLDER_ID;
+  if (!raw) return raw;
+  const m = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : raw;
 }
 
 /* ── Allegati appuntamento ─────────────────────────────── */
@@ -3234,40 +3242,45 @@ async function techCalSync() {
       const existing = alreadyById || alreadyByTag;
       const evAllegati = _parseAllegatiFromDesc(ev.description);
       const evCompletato = ev.description?.includes('✅ COMPLETATO') || false;
+      const evDateStr = ev.start.dateTime.split('T')[0];
+      const evTimeStr = ev.start.dateTime.split('T')[1].slice(0,5);
+      const evTimeEnd = ev.end?.dateTime?.split('T')[1]?.slice(0,5) || '';
+      const evCidMatch = ev.description?.match(/\[mda_cid:([^\]]+)\]/);
+      const evClienteM = CLIENTI.find(c => ev.summary?.includes(c.nome) || ev.summary?.includes(c.codice||'XXX'));
+      const evClienteId = evCidMatch?.[1] || evClienteM?.id || '';
+      const evClienteNome = evClienteM?.nome || (evClienteId ? CLIENTI.find(c=>c.id===evClienteId)?.nome : '') || ev.summary || '';
+      const evTipo = ev.description?.match(/Tipo:\s*([^\n\[]+)/)?.[1]?.trim() || '';
+      const evNote = (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|\[mda_al:[^\]]+\]|✅ COMPLETATO/g,'').trim();
       if (existing) {
-        // Aggiorna allegati se l'admin ne ha aggiunti/rimossi
-        if (JSON.stringify(existing.allegati||[]) !== JSON.stringify(evAllegati)) {
-          existing.allegati = evAllegati; needsSave = true;
-        }
-        if (existing.completato !== evCompletato) { existing.completato = evCompletato; needsSave = true; }
-        if (alreadyById && !alreadyById.gcalId) { alreadyById.gcalId = ev.id; needsSave = true; }
+        // Sincronizza tutti i campi che l'admin potrebbe aver modificato
+        let changed = false;
+        if (existing.data         !== evDateStr)   { existing.data         = evDateStr;   changed = true; }
+        if (existing.ora          !== evTimeStr)   { existing.ora          = evTimeStr;   changed = true; }
+        if (existing.ora_fine     !== evTimeEnd)   { existing.ora_fine     = evTimeEnd;   changed = true; }
+        if (existing.tipo_intervento !== evTipo)   { existing.tipo_intervento = evTipo;   changed = true; }
+        if (existing.note         !== evNote)      { existing.note         = evNote;      changed = true; }
+        if (evClienteId && existing.clienteId !== evClienteId) { existing.clienteId = evClienteId; existing.clienteNome = evClienteNome; changed = true; }
+        if (JSON.stringify(existing.allegati||[]) !== JSON.stringify(evAllegati)) { existing.allegati = evAllegati; changed = true; }
+        if (existing.completato !== evCompletato)  { existing.completato   = evCompletato; changed = true; }
+        if (!existing.gcalId) { existing.gcalId = ev.id; changed = true; }
+        if (changed) { needsSave = true; imported++; }
         continue;
       }
-      const dateStr = ev.start.dateTime.split('T')[0];
-      const timeStr = ev.start.dateTime.split('T')[1].slice(0,5);
-      const timeEnd = ev.end?.dateTime?.split('T')[1]?.slice(0,5) || '';
-      const cidMatch = ev.description?.match(/\[mda_cid:([^\]]+)\]/);
-      const clienteM = CLIENTI.find(c => ev.summary?.includes(c.nome) || ev.summary?.includes(c.codice||'XXX'));
-      const resolvedClienteId = cidMatch?.[1] || clienteM?.id || '';
-      const resolvedClienteNome = clienteM?.nome || (resolvedClienteId ? CLIENTI.find(c=>c.id===resolvedClienteId)?.nome : '') || ev.summary || '';
       appuntamenti.push({
         id: 'gcal_' + ev.id, gcalId: ev.id,
         tecnico: currentTech.id,
-        data: dateStr, ora: timeStr, ora_fine: timeEnd,
-        clienteId: resolvedClienteId, clienteNome: resolvedClienteNome,
-        tipo_intervento: ev.description?.match(/Tipo:\s*([^\n\[]+)/)?.[1]?.trim() || '',
-        note: (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|\[mda_al:[^\]]+\]|✅ COMPLETATO/g,'').trim(),
-        allegati: evAllegati,
-        completato: evCompletato,
+        data: evDateStr, ora: evTimeStr, ora_fine: evTimeEnd,
+        clienteId: evClienteId, clienteNome: evClienteNome,
+        tipo_intervento: evTipo, note: evNote,
+        allegati: evAllegati, completato: evCompletato,
         source: 'gcal'
       });
       imported++;
     }
     if (imported > 0 || needsSave) { saveAppuntamenti(); renderHome(); renderAgendaList(); }
     const ora = new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-    const aggiornati = needsSave && imported === 0;
-    if (info) info.textContent = `Ultima sync: ${ora} · ${imported > 0 ? imported + ' nuovi' : aggiornati ? 'allegati aggiornati' : 'nessuna novità'}`;
-    toast(imported > 0 ? `⬇ ${imported} appuntamenti scaricati` : aggiornati ? '📎 Allegati aggiornati' : '✅ Agenda aggiornata');
+    if (info) info.textContent = `Ultima sync: ${ora} · ${imported > 0 ? imported + ' aggiornati/nuovi' : 'nessuna novità'}`;
+    toast(imported > 0 ? `⬇ ${imported} appuntament${imported===1?'o':'i'} aggiornati` : '✅ Agenda aggiornata');
   } catch(e) {
     if (info) info.textContent = 'Errore di sincronizzazione';
     toast('⚠️ Errore connessione Calendar');
@@ -4091,7 +4104,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.20'; // fix: upload rapportino Drive ora funziona anche se Drive non era connesso al momento del salvataggio (Abramo, Senny)
+const _APP_VERSION = '2.22'; // fix: cartella allegati accetta URL Drive completo (estrae ID automaticamente); fix agenda incompleta tecnici
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
