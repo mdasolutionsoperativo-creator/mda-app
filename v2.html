@@ -466,6 +466,22 @@
       </div>
     </div>
 
+    <!-- Tecnico: Aggiornamento App (solo tecnici non-admin) -->
+    <div id="tech-update-section" style="display:none;margin-top:16px">
+      <p class="section-title">🔄 Aggiornamento App</p>
+      <div class="card" style="padding:14px">
+        <div style="font-size:13px;color:var(--sub);margin-bottom:10px">
+          Versione installata: <strong id="tech-app-ver-label"></strong>
+        </div>
+        <button class="btn-sm primary" onclick="forzaAggiornamento()" style="width:100%">
+          🔄 Forza aggiornamento
+        </button>
+        <p style="font-size:11px;color:#9ca3af;margin-top:8px">
+          Svuota la cache e ricarica l'app. I tuoi dati non vengono persi.
+        </p>
+      </div>
+    </div>
+
     <!-- Admin: lista tecnici -->
     <div id="admin-tech-section" style="display:none">
       <p class="section-title" style="margin-top:16px">Tecnici</p>
@@ -1136,10 +1152,13 @@ function initMain() {
     renderFerieAdmin();
   }
 
-  // Non-admin: mostra sezione presenze personali + sync Calendar
+  // Non-admin: mostra sezione presenze personali + sync Calendar + aggiornamento app
   if (!currentTech.isAdmin) {
     document.getElementById('presenze-section').style.display = 'block';
     document.getElementById('tech-cal-section').style.display = 'block';
+    document.getElementById('tech-update-section').style.display = 'block';
+    const verEl = document.getElementById('tech-app-ver-label');
+    if (verEl) verEl.textContent = _APP_VERSION;
     const _nowP = new Date();
     document.getElementById('mie-presenze-mese').value = _nowP.getMonth() + 1;
     document.getElementById('mie-presenze-anno').value = _nowP.getFullYear();
@@ -2540,6 +2559,7 @@ function gisLoaded() {
       const exp = Date.now() + (resp.expires_in - 60) * 1000;
       localStorage.setItem('mda_drive_tok', resp.access_token);
       localStorage.setItem('mda_drive_exp', exp);
+      localStorage.setItem('mda_drive_scope', GCAL.DRIVE_SCOPE); // salva lo scope usato
       driveUpdateUI(true);
       toast('☁️ Google Drive connesso!');
       // Aggiorna il modal appuntamento aperto (se presente) per mostrare il pulsante allegati
@@ -2599,6 +2619,16 @@ function _gcalSilentRefresh() {
 
 function _driveTryRestore() {
   if (!_gisReady) return;
+
+  // Se lo scope Drive è cambiato dall'ultima autorizzazione, invalida il token vecchio
+  // (es. da drive.file a drive) — l'utente dovrà ri-autorizzare una volta sola
+  const storedScope = localStorage.getItem('mda_drive_scope');
+  if (storedScope && storedScope !== GCAL.DRIVE_SCOPE) {
+    localStorage.removeItem('mda_drive_tok');
+    localStorage.removeItem('mda_drive_exp');
+    localStorage.removeItem('mda_drive_scope');
+  }
+
   const tok = localStorage.getItem('mda_drive_tok');
   const exp = parseInt(localStorage.getItem('mda_drive_exp') || '0');
   if (tok && exp > Date.now()) {
@@ -2914,12 +2944,31 @@ async function uploadRapportinoDrive(pdfBlob, filename) {
       }
     } else {
       const err = await resp.json().catch(() => ({}));
-      // Token scaduto → prova a rinnovare
       if (resp.status === 401) {
+        // Token scaduto → pulisci e avvisa
         _driveToken = null;
         localStorage.removeItem('mda_drive_tok');
+        localStorage.removeItem('mda_drive_exp');
+        localStorage.removeItem('mda_drive_scope');
         driveUpdateUI(false);
         toast('⚠️ Sessione Drive scaduta — riconnetti Google Drive');
+      } else if (resp.status === 403) {
+        // Permessi insufficienti (scope vecchio o cartella non accessibile) → ri-autorizza
+        _driveToken = null;
+        localStorage.removeItem('mda_drive_tok');
+        localStorage.removeItem('mda_drive_exp');
+        localStorage.removeItem('mda_drive_scope');
+        driveUpdateUI(false);
+        if (_driveTokenClient) {
+          _pendingRappDriveUpload = { blob: pdfBlob, name: filename };
+          toast('☁️ Serve una nuova autorizzazione Drive — tocca OK nel popup Google…');
+          try { _driveTokenClient.requestAccessToken({ prompt: 'consent' }); } catch(ex) {
+            _pendingRappDriveUpload = null;
+            toast('⚠️ Drive non autorizzato — rapportino salvato solo localmente');
+          }
+        } else {
+          toast('⚠️ Upload Drive negato (403) — vai su Impostazioni e riconnetti Drive');
+        }
       } else {
         console.error('Drive upload error', resp.status, err);
         toast(`⚠️ Upload Drive fallito (${resp.status}) — rapportino salvato solo localmente`);
@@ -2927,7 +2976,8 @@ async function uploadRapportinoDrive(pdfBlob, filename) {
     }
   } catch (e) {
     console.error('Drive upload exception', e);
-    toast('⚠️ Upload Drive fallito — verifica la connessione');
+    // Mostra il messaggio d'errore effettivo per debugging
+    toast(`⚠️ Upload Drive fallito — ${e?.message || 'errore di rete'}`);
   }
 }
 
@@ -3149,6 +3199,7 @@ async function gcalSyncAll() {
 // Import events from Google Calendar → app (last 7 days + next 60 days) via fetch
 async function gcalImport() {
   if (!_gcalToken) return;
+  _deduplicateAppuntamenti(); // pulizia duplicati prima di importare
   const timeMin = new Date(Date.now() - 30*86400000).toISOString();
   const timeMax = new Date(Date.now() + 120*86400000).toISOString();
   let imported = 0;
@@ -3254,10 +3305,36 @@ function techCalDisconnect() {
   toast('Calendar disconnesso');
 }
 
+// Rimuove appuntamenti duplicati per gcalId (accumulati prima del fix dedup v2.15)
+// Chiamata automaticamente ad ogni sync per tenere pulito il localStorage
+function _deduplicateAppuntamenti() {
+  let changed = false;
+  // Step 1: rimuovi da appuntamenti le entry il cui gcalId/id esiste già in interventoExtra
+  for (let i = appuntamenti.length - 1; i >= 0; i--) {
+    const a = appuntamenti[i];
+    const dupInExtra = (a.gcalId && interventoExtra.find(e => e.gcalId === a.gcalId))
+                    || (a.id && a.id === interventoExtra.find(e => e.id === a.id)?.id);
+    if (dupInExtra) { appuntamenti.splice(i, 1); changed = true; }
+  }
+  // Step 2: rimuovi gcalId duplicati all'interno di appuntamenti (tieni il primo)
+  const seenGcalIds = new Set();
+  for (let i = appuntamenti.length - 1; i >= 0; i--) {
+    const a = appuntamenti[i];
+    if (a.gcalId) {
+      if (seenGcalIds.has(a.gcalId)) { appuntamenti.splice(i, 1); changed = true; }
+      else seenGcalIds.add(a.gcalId);
+    }
+  }
+  if (changed) { saveAppuntamenti(); console.log('[dedup] rimossi duplicati appuntamenti'); }
+  return changed;
+}
+
 async function techCalSync() {
   if (!_gcalToken || !currentTech) return;
   const calId = GCAL.CALENDARS[currentTech.id];
   if (!calId) { toast('Calendario non configurato per questo tecnico'); return; }
+  // Pulizia duplicati accumulati prima del fix dedup (es. Matteo con 4 copie dello stesso appuntamento)
+  _deduplicateAppuntamenti();
   const info = document.getElementById('tech-cal-sync-info');
   if (info) { info.textContent = 'Sincronizzazione in corso…'; info.style.display = ''; }
   // Scarica eventi: da 30 giorni fa a 120 giorni in avanti
@@ -4151,7 +4228,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.24'; // fix: scope Drive cambiato da drive.file a drive — consente upload in cartelle condivise non create dall'app
+const _APP_VERSION = '2.25'; // fix: scope version check Drive (forza re-auth se scope cambiato); dedup agenda (rimuove duplicati gcalId); 403 handler upload
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
