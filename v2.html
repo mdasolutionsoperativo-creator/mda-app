@@ -938,7 +938,7 @@ const GCAL = {
   CLIENT_ID:        '1090743587627-v9rq3ainmhej93tle0to61kqqfd2j3ve.apps.googleusercontent.com',
   API_KEY:          '',
   SCOPES:           'https://www.googleapis.com/auth/calendar',
-  DRIVE_SCOPE:      'https://www.googleapis.com/auth/drive.file',
+  DRIVE_SCOPE:      'https://www.googleapis.com/auth/drive',
   // ↓ Cartella "MDA Rapportini" su Google Drive (solo PDF rapportini firmati)
   DRIVE_FOLDER_ID:  '1VOZkHvI7lkqqzGwLbBBz9RL_ZgVAevpg',
   // ↓ Cartella "Allegati Tecnici" su Google Drive (file allegati agli appuntamenti)
@@ -2921,8 +2921,8 @@ async function uploadRapportinoDrive(pdfBlob, filename) {
         driveUpdateUI(false);
         toast('⚠️ Sessione Drive scaduta — riconnetti Google Drive');
       } else {
-        console.error('Drive upload error', err);
-        toast('⚠️ Upload Drive fallito — rapportino salvato solo localmente');
+        console.error('Drive upload error', resp.status, err);
+        toast(`⚠️ Upload Drive fallito (${resp.status}) — rapportino salvato solo localmente`);
       }
     }
   } catch (e) {
@@ -4151,7 +4151,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.23'; // fix: Drive/Calendar silent reconnect ora mostra toast+pulsante se fallisce; badge Drive nella tab Rapportino; popup Google al salvataggio rapportino
+const _APP_VERSION = '2.24'; // fix: scope Drive cambiato da drive.file a drive — consente upload in cartelle condivise non create dall'app
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
