@@ -1109,6 +1109,10 @@ function initMain() {
     document.getElementById('mie-presenze-mese').value = _nowP.getMonth() + 1;
     document.getElementById('mie-presenze-anno').value = _nowP.getFullYear();
     techCalUpdateUI(!!_gcalToken);
+    // Se GIS è già caricato prima del login, avvia auto-connessione
+    // (se invece GIS carica dopo, ci pensa _gcalTryRestore / _driveTryRestore)
+    if (!_gcalToken && _gapiReady && _gisReady) _gcalTryRestore();
+    if (!_driveToken && _gisReady) _driveTryRestore();
   }
 
   // Se non admin, preseleziona il tecnico nei form
@@ -1429,6 +1433,12 @@ function renderApptCard(a) {
   const isExtra = a.tipo === 'extra';
   const indirizzo = cliente.indirizzo || '';
   const hasDetail = !!(indirizzo || a.note);
+  // Colleghi di squadra: stessa data + stesso cliente + stessa ora di inizio
+  const colleghi = getAllAppts()
+    .filter(x => x.id !== a.id && x.clienteId === a.clienteId && x.data === a.data && x.ora === a.ora)
+    .map(x => Object.values(CONFIG.tecnici).find(t => t.id === x.tecnico))
+    .filter(Boolean)
+    .filter((t, i, arr) => arr.findIndex(u => u.id === t.id) === i); // dedup
 
   return `<div class="appt-card ${isExtra?'extra':''} ${a.completato?'completed':''}" id="appt-${a.id}"
       onclick="toggleApptDetail('${a.id}')" style="cursor:pointer;user-select:none">
@@ -1451,6 +1461,12 @@ function renderApptCard(a) {
       <div id="appt-detail-${a.id}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0">
         ${indirizzo ? `<div style="font-size:12px;color:var(--sub);margin-bottom:8px;display:flex;align-items:flex-start;gap:5px">
           <span style="flex-shrink:0">📍</span><span>${indirizzo}</span></div>` : ''}
+        ${colleghi.length ? `<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 10px;background:#f0fdf4;border-radius:8px;border-left:3px solid #10b981">
+          <span style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">👥 Squadra:</span>
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+            ${colleghi.map(t=>`<span style="display:inline-flex;align-items:center;gap:4px;background:${t.colore};color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${t.iniziali} ${t.nome.split(' ')[0]}</span>`).join('')}
+          </div>
+        </div>` : ''}
         ${a.note ? `<div style="font-size:12px;color:#475569;margin-bottom:10px;padding:8px 10px;background:#f1f5f9;border-radius:8px;border-left:3px solid var(--blue-light)">
           <span style="font-weight:600;color:var(--sub);font-size:11px;text-transform:uppercase;letter-spacing:.3px">Note</span><br>${a.note}</div>` : ''}
         ${a.allegati?.length ? `<div style="margin-bottom:10px">${a.allegati.map(al=>`<a href="${al.url}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#6366f1;text-decoration:none;background:#eef2ff;border-radius:6px;padding:4px 8px;margin:0 4px 4px 0">📎 ${al.nome}</a>`).join('')}</div>` : ''}
@@ -1795,6 +1811,24 @@ function resetInterventoForm() {
   const titleEl = document.querySelector('#tab-intervento .section-title');
   if (titleEl) titleEl.textContent = 'Intervento Extra';
   editingApptId = null;
+  // ── Reset campi principali (cliente, data, ora, tipo) ──
+  const clienteResetEl = document.getElementById('int-cliente');
+  if (clienteResetEl) clienteResetEl.value = '';
+  const dataResetEl = document.getElementById('int-data');
+  if (dataResetEl) dataResetEl.value = new Date().toISOString().split('T')[0];
+  const oraResetEl = document.getElementById('int-ora');
+  if (oraResetEl) oraResetEl.value = '';
+  const oraFineResetEl = document.getElementById('int-ora-fine');
+  if (oraFineResetEl) oraFineResetEl.value = '';
+  // Tipo: riporta a MAN. ORDIN. (default)
+  document.querySelectorAll('#int-tipo-chips .chip').forEach(c => {
+    c.classList.toggle('selected', c.dataset.val === 'MAN. ORDIN.');
+  });
+  // Per admin: azzera anche tecnico
+  if (currentTech && currentTech.isAdmin) {
+    const tecResetEl = document.getElementById('int-tecnico');
+    if (tecResetEl) tecResetEl.value = '';
+  }
 }
 
 function salvaIntervento() {
@@ -2405,6 +2439,10 @@ function _gcalTryRestore() {
       techCalUpdateUI(true);
       techCalSync();
     }
+  } else if (currentTech && _tokenClient) {
+    // Token assente o scaduto: richiedi silenziosamente.
+    // Se già autorizzato → nessun popup; se prima volta → Google mostra il consenso.
+    _tokenClient.requestAccessToken({ prompt: '' });
   }
 }
 
@@ -2434,6 +2472,10 @@ function _driveTryRestore() {
   if (tok && exp > Date.now()) {
     _driveToken = tok;
     driveUpdateUI(true);
+  } else if (currentTech && _driveTokenClient && GCAL.DRIVE_FOLDER_ID) {
+    // Token assente o scaduto: richiedi silenziosamente.
+    // Se già autorizzato → nessun popup; se prima volta → Google mostra il consenso.
+    _driveTokenClient.requestAccessToken({ prompt: '' });
   }
 }
 
@@ -3879,7 +3921,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.15'; // fix: oraFine→ora_fine, duplicate import, 401 auto-refresh
+const _APP_VERSION = '2.16'; // fix: squadra visibile, reset form intervento, auto-connect Calendar+Drive
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
