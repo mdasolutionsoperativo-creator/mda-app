@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mda-cache-v6';
+const CACHE_NAME = 'mda-cache-v7';
 const STATIC = ['/mda-app/icon-192.png', '/mda-app/icon-512.png', '/mda-app/manifest.json'];
 
 self.addEventListener('install', e => {
@@ -15,12 +15,22 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  if (url.origin !== self.location.origin) return;
+
+  // iOS PWA fix (WKWebView bug): fare "return" senza respondWith() su richieste cross-origin
+  // causa "Load failed" su alcune versioni di iOS perché il preflight CORS OPTIONS viene
+  // trattato come cancellato. Soluzione: passthrough esplicito con e.respondWith(fetch(...)).
+  if (url.origin !== self.location.origin) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+
+  // mda-app.html: sempre dalla rete (con fallback cache)
   const p = url.pathname;
   if (p === '/mda-app/' || p.endsWith('.html')) {
     e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
     return;
   }
+  // Icone e manifest: dalla cache (con fallback rete)
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
 });
 

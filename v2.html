@@ -4342,7 +4342,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.29'; // fix iOS PWA "Load failed": Blob→ArrayBuffer in uploadRapportinoDrive/uploadAllegatoDrive Step2; step label in catch per diagnostica; + v2.28: resp.scope lenient, login_hint, _driveSilentRefresh
+const _APP_VERSION = '2.30'; // fix iOS "Load failed" root cause: SW passthrough esplicito per cross-origin (e.respondWith invece di return); cache v7; + v2.29: ArrayBuffer step2, step label
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
