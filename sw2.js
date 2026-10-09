@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mda-cache-v7';
+const CACHE_NAME = 'mda-cache-v8';
 const STATIC = ['/mda-app/icon-192.png', '/mda-app/icon-512.png', '/mda-app/manifest.json'];
 
 self.addEventListener('install', e => {
@@ -15,15 +15,10 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-
-  // iOS PWA fix (WKWebView bug): fare "return" senza respondWith() su richieste cross-origin
-  // causa "Load failed" su alcune versioni di iOS perché il preflight CORS OPTIONS viene
-  // trattato come cancellato. Soluzione: passthrough esplicito con e.respondWith(fetch(...)).
-  if (url.origin !== self.location.origin) {
-    e.respondWith(fetch(e.request));
-    return;
-  }
-
+  // NON intercettare richieste cross-origin (Google APIs, Drive, Calendar, ecc.)
+  // L'app usa XMLHttpRequest per Drive/Calendar su iOS (non fetch), quindi questo return
+  // non causa "Load failed" per quelle chiamate.
+  if (url.origin !== self.location.origin) return;
   // mda-app.html: sempre dalla rete (con fallback cache)
   const p = url.pathname;
   if (p === '/mda-app/' || p.endsWith('.html')) {
