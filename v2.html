@@ -2864,7 +2864,8 @@ async function uploadAllegatoDrive(inputEl, apptId) {
   if (lbl) lbl.style.opacity = '0.5';
   toast('⏳ Caricamento allegato…');
 
-  // Upload in due step (come rapportini) per evitare problemi FormData/multipart su Android
+  // Upload in due step (come rapportini) per evitare problemi FormData/multipart su Android/iOS
+  let _attachStep = 'step1';
   try {
     // Step 1: crea il record metadati
     const metaResp = await fetch(
@@ -2891,9 +2892,12 @@ async function uploadAllegatoDrive(inputEl, apptId) {
     const created = await metaResp.json();
     const fileId = created.id;
     // Step 2: carica il contenuto del file
+    // iOS fix: convertire File/Blob in ArrayBuffer prima del fetch (WKWebView "Load failed")
+    _attachStep = 'step2';
+    const fileBuffer = await file.arrayBuffer();
     const uploadResp = await fetch(
       `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,webViewLink`,
-      { method: 'PATCH', headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': file.type || 'application/octet-stream' }, body: file }
+      { method: 'PATCH', headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': file.type || 'application/octet-stream' }, body: fileBuffer }
     );
     if (!uploadResp.ok) {
       console.error('Drive allegato upload content error', uploadResp.status);
@@ -2938,7 +2942,8 @@ async function uploadAllegatoDrive(inputEl, apptId) {
       toast(msg);
     }
   } catch(e) {
-    toast('⚠️ Errore upload allegato');
+    console.error(`Drive allegato exception [${_attachStep}]`, e);
+    toast(`⚠️ Errore upload allegato [${_attachStep}] — ${e?.message || 'errore di rete'}`);
     if (lbl) lbl.style.opacity = '1';
   }
 }
@@ -2992,6 +2997,7 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
   //   Step 1: crea il file con i metadati (JSON) → ottieni fileId
   //   Step 2: carica il contenuto binario (PDF) con PATCH
 
+  let _uploadStep = 'step1';
   try {
     // ── STEP 1: crea il record metadati ──────────────────────────────
     const metaResp = await fetch(
@@ -3045,6 +3051,10 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
     const fileId = created.id;
 
     // ── STEP 2: carica il contenuto PDF ──────────────────────────────
+    // iOS PWA (WKWebView/Safari): fetch() con body=Blob può lanciare "Load failed"
+    // Fix: convertire il Blob in ArrayBuffer prima di passarlo come body
+    _uploadStep = 'step2';
+    const pdfBuffer = await pdfBlob.arrayBuffer();
     const uploadResp = await fetch(
       `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,webViewLink`,
       {
@@ -3053,7 +3063,7 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
           Authorization: `Bearer ${_driveToken}`,
           'Content-Type': 'application/pdf'
         },
-        body: pdfBlob
+        body: pdfBuffer
       }
     );
 
@@ -3079,9 +3089,9 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
     }
 
   } catch (e) {
-    console.error('Drive upload exception', e);
-    // Mostra il messaggio d'errore effettivo per diagnostica
-    toast(`⚠️ Upload Drive fallito — ${e?.message || 'errore di rete'}`);
+    console.error(`Drive upload exception [${_uploadStep}]`, e);
+    // Mostra step e messaggio per diagnostica (es. "Load failed" su iOS = WKWebView error)
+    toast(`⚠️ Upload Drive fallito [${_uploadStep}] — ${e?.message || 'errore di rete'}`);
   }
 }
 
@@ -4332,7 +4342,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.28'; // fix: resp.scope check lenient (silent refresh non include scope → non rifiutare); login_hint per saltare picker account Android; _driveSilentRefresh() con retry automatico su 401
+const _APP_VERSION = '2.29'; // fix iOS PWA "Load failed": Blob→ArrayBuffer in uploadRapportinoDrive/uploadAllegatoDrive Step2; step label in catch per diagnostica; + v2.28: resp.scope lenient, login_hint, _driveSilentRefresh
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
