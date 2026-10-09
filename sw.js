@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mda-cache-v9';
+const CACHE_NAME = 'mda-cache-v10';
 const STATIC = ['/mda-app/icon-192.png', '/mda-app/icon-512.png', '/mda-app/manifest.json'];
 
 self.addEventListener('install', e => {
@@ -16,41 +16,64 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Cross-origin (Google APIs, Drive, Calendar, ecc.)
-  // iOS WKWebView fix: il SW deve intercettare e ri-fetchare esplicitamente.
-  // Problema v2.30: fetch(e.request) perdeva il body su iOS (stream consumato).
-  // Fix v9: leggiamo il body con blob() prima di creare un nuovo fetch,
-  // così il body è materializzato in memoria nel SW e non va perso.
+  // ── Cross-origin (Google APIs, Drive, Calendar, ecc.) ─────────────────────
+  // iOS WKWebView dual-stream bug:
+  //   Bug 1 (REQUEST): il body stream di e.request viene perso → materializzare con blob()
+  //   Bug 2 (RESPONSE): il ReadableStream esterno (da googleapis.com) non viene consegnato
+  //                     al thread principale → leggere il body nel SW e creare new Response
+  //                     locale con Blob materializzato, così iOS può consegnarlo senza problemi
   if (url.origin !== self.location.origin) {
     e.respondWith(
       (async () => {
         const method = e.request.method;
-        // GET/HEAD: nessun body, passthrough diretto
+
+        // GET/HEAD: nessun body di richiesta, nessun rischio body-stream
         if (method === 'GET' || method === 'HEAD') {
-          return fetch(e.request);
+          try {
+            const resp = await fetch(e.request);
+            // Materializza anche la risposta per sicurezza su iOS
+            const body = await resp.blob();
+            return new Response(body, {
+              status: resp.status,
+              headers: { 'Content-Type': resp.headers.get('Content-Type') || 'application/octet-stream' }
+            });
+          } catch(_) { return fetch(e.request); }
         }
-        // POST/PATCH/PUT: leggi il body esplicitamente prima di ri-fetchare
-        let bodyBlob = null;
-        try { bodyBlob = await e.request.blob(); } catch(_) {}
-        const headers = {};
-        try { e.request.headers.forEach((v, k) => { headers[k] = v; }); } catch(_) {}
-        return fetch(e.request.url, {
+
+        // POST/PATCH/PUT: doppia materializzazione (request body + response body)
+        let reqBody = null;
+        try { reqBody = await e.request.blob(); } catch(_) {}
+
+        const reqHeaders = {};
+        try { e.request.headers.forEach((v, k) => { reqHeaders[k] = v; }); } catch(_) {}
+
+        // Chiamata reale dalla SW context (bypassa le restrizioni CORS di WKWebView)
+        const resp = await fetch(e.request.url, {
           method,
-          headers,
-          body: bodyBlob && bodyBlob.size > 0 ? bodyBlob : null
+          headers: reqHeaders,
+          body: reqBody && reqBody.size > 0 ? reqBody : null
+        });
+
+        // Materializza la RISPOSTA in un Blob nel SW, poi crea una nuova Response locale.
+        // Se tornassimo resp direttamente, iOS WKWebView non riesce a leggere lo stream
+        // esterno nel thread principale → fetch() lancia "Load failed" anche se la richiesta
+        // è arrivata e Google ha risposto correttamente.
+        const respBody = await resp.blob();
+        return new Response(respBody, {
+          status: resp.status,
+          headers: { 'Content-Type': resp.headers.get('Content-Type') || 'application/json' }
         });
       })()
     );
     return;
   }
 
-  // mda-app.html: sempre dalla rete (con fallback cache)
+  // ── Same-origin ────────────────────────────────────────────────────────────
   const p = url.pathname;
   if (p === '/mda-app/' || p.endsWith('.html')) {
     e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
     return;
   }
-  // Icone e manifest: dalla cache (con fallback rete)
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
 });
 

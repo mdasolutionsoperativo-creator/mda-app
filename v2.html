@@ -820,6 +820,10 @@
           <div class="chip" data-val="CANTIERE" onclick="selectChip(this,'rapp-tipo-chips')">CANTIERE</div>
         </div>
       </div>
+      <div class="form-group" id="rapp-note-group" style="display:none">
+        <label class="form-label" style="color:#1e40af;font-weight:700">📋 Indicazioni intervento</label>
+        <div id="rapp-note-display" style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:10px 12px;font-size:14px;color:#1e3a8a;white-space:pre-wrap;line-height:1.5"></div>
+      </div>
       <div class="form-group">
         <label class="form-label">Lavori eseguiti</label>
         <textarea class="form-control" id="rapp-lavori" rows="4" placeholder="Descrivi i lavori eseguiti..."></textarea>
@@ -1835,6 +1839,19 @@ function apriRapportinoDa(id) {
     });
   }
 
+  // Note/indicazioni inserite dall'admin (visibili come riferimento al tecnico)
+  const noteGroup = document.getElementById('rapp-note-group');
+  const noteDisplay = document.getElementById('rapp-note-display');
+  if (noteGroup && noteDisplay) {
+    if (a.note && a.note.trim()) {
+      noteDisplay.textContent = a.note.trim();
+      noteGroup.style.display = 'block';
+    } else {
+      noteGroup.style.display = 'none';
+      noteDisplay.textContent = '';
+    }
+  }
+
   toast('✅ Dati copiati nel rapportino');
 }
 
@@ -2243,6 +2260,7 @@ async function generaPDF() {
   const ore = document.getElementById('rapp-ore').value;
   const impiantoEl = document.querySelector('#rapp-impianto-chips .chip.selected');
   const tipoEl = document.querySelector('#rapp-tipo-chips .chip.selected');
+  const noteIndicazioni = (document.getElementById('rapp-note-display')?.textContent || '').trim();
   const lavori = document.getElementById('rapp-lavori').value;
   const materiali = document.getElementById('rapp-materiali').value;
   const prossima = document.getElementById('rapp-prossima').value;
@@ -2357,6 +2375,19 @@ async function generaPDF() {
     return sy + sh + 5;
   };
 
+  if (noteIndicazioni) {
+    // Sezione "Indicazioni Intervento" con sfondo azzurro distinguibile
+    const linesNote = doc.splitTextToSize(noteIndicazioni, CW - 10);
+    const shNote = Math.max(18, linesNote.length * 5 + 12);
+    doc.setFillColor(219, 234, 254); // azzurro chiaro
+    doc.setDrawColor(147, 197, 253);
+    doc.roundedRect(M, y, CW, shNote, 2, 2, 'FD');
+    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 64, 175);
+    doc.text('INDICAZIONI INTERVENTO', M + 4, y + 6);
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
+    doc.text(linesNote, M + 4, y + 12);
+    y += shNote + 5;
+  }
   y = drawSection('Lavori Eseguiti', lavori, y);
   if (materiali.trim()) y = drawSection('Materiali Utilizzati', materiali, y);
   if (prossima.trim()) y = drawSection('Prossima Manutenzione Prevista', prossima, y);
@@ -4321,7 +4352,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.32'; // fix iOS: SW v9 materializza body con blob() prima di ri-fetchare cross-origin → body non viene perso su WKWebView (cache v9)
+const _APP_VERSION = '2.34'; // fix iOS Drive: SW v10 materializza ANCHE la risposta → new Response locale, WKWebView la consegna correttamente
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
