@@ -2423,15 +2423,18 @@ async function generaPDF() {
   doc.setDrawColor(219,234,254);
   doc.line(M, PH - 12, PW - M, PH - 12);
 
-  // Salva e scarica — nome: DATA_CLIENTE_NumRapportino.pdf
+  // Genera blob PDF unico — usato sia per il download locale che per Drive
   const nomeCliente = (cliente ? cliente.nome : 'Cliente').replace(/[^a-zA-Z0-9À-ÿ]/g, '_').replace(/_+/g,'_');
   const nomeCommessa = commessa ? '_' + commessa.replace(/[^a-zA-Z0-9]/g,'_') : '';
   const filename = `${data}_${nomeCliente}${nomeCommessa}_${numRapp}.pdf`;
-  doc.save(filename);
+  const pdfBlob = doc.output('blob');
+
+  // Download locale — su iOS usa Web Share API (pannello nativo Condividi/Salva)
+  // che evita il bug blob-URL di WKWebView che produce file vuoti
+  _downloadPDF(pdfBlob, filename); // non awaited: prosegui subito con Drive upload
 
   // Upload automatico su Google Drive (se connesso)
   if (GCAL.DRIVE_FOLDER_ID) {
-    const pdfBlob = doc.output('blob');
     if (_driveToken) {
       uploadRapportinoDrive(pdfBlob, filename);
     } else if (_driveTokenClient) {
@@ -2638,6 +2641,36 @@ function _gcalTryRestore() {
     // hint: email del tecnico → Google salta il picker account su dispositivi con più account.
     _tokenClient.requestAccessToken({ prompt: '', hint: currentTech.email || '' });
   }
+}
+
+// ── Download PDF (iOS-compatibile) ────────────────────────────────────────────
+// Su iOS WKWebView/PWA, doc.save() usa un blob URL che viene spesso revocato
+// prima che il sistema operativo lo legga → file scaricato vuoto.
+// Soluzione: Web Share API (iOS 14+), che apre il pannello nativo Condividi/Salva.
+// Su Android e desktop si usa il classico anchor-download con revoca ritardata.
+async function _downloadPDF(blob, filename) {
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  if (isIOS && navigator.canShare) {
+    const file = new File([blob], filename, { type: 'application/pdf' });
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: filename });
+        return; // pannello Condividi aperto con successo
+      } catch(e) {
+        if (e.name === 'AbortError') return; // utente ha annullato — ok
+        console.warn('[_downloadPDF] share failed, fallback anchor:', e);
+      }
+    }
+  }
+  // Fallback: anchor download con blob URL e revoca ritardata (30s)
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  a.style.cssText = 'position:fixed;left:-9999px;top:0';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 // ── SW-mediated fetch (iOS WKWebView Drive upload fix) ────────────────────────
@@ -4422,7 +4455,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.35'; // fix iOS Drive: _swFetch() usa DRIVE_FETCH postMessage→SW→DRIVE_FETCH_RESULT, bypassa WKWebView fetch-event bug
+const _APP_VERSION = '2.36'; // fix iOS PDF vuoto: _downloadPDF() usa Web Share API su iOS invece di doc.save() che produce blob vuoti in WKWebView
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
