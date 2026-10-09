@@ -2640,6 +2640,74 @@ function _gcalTryRestore() {
   }
 }
 
+// ── SW-mediated fetch (iOS WKWebView Drive upload fix) ────────────────────────
+// Su iOS WKWebView il browser NON consegna la risposta di un fetch cross-origin
+// che passa per il Service Worker fetch-event (bug WKWebView). Soluzione: invece
+// di fare fetch() direttamente, invia DRIVE_FETCH al SW tramite postMessage; il SW
+// esegue il fetch dal suo message-event handler (non soggetto al bug) e risponde
+// con DRIVE_FETCH_RESULT. Il risultato arriva via navigator.serviceWorker.message.
+// Se il SW non è disponibile come controller ricade sul fetch() nativo.
+async function _swFetch(url, options = {}) {
+  const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+  if (!sw) {
+    // Nessun SW controller: fallback fetch nativo (desktop / primo caricamento)
+    const r = await fetch(url, options);
+    return { ok: r.ok, status: r.status, json: () => r.json(), text: () => r.text() };
+  }
+
+  return new Promise(async (resolve, reject) => {
+    const reqId = Date.now() + '_' + Math.random().toString(36).slice(2);
+
+    // Converti il body in ArrayBuffer trasferibile (Blob / File / ArrayBuffer)
+    let bodyBuf = null, bodyType = null;
+    try {
+      if (options.body instanceof Blob || options.body instanceof File) {
+        bodyBuf = await options.body.arrayBuffer();
+        bodyType = options.body.type || 'application/octet-stream';
+      } else if (options.body instanceof ArrayBuffer) {
+        bodyBuf = options.body;
+      }
+    } catch(convErr) {
+      reject(new Error('body conversion error: ' + convErr.message)); return;
+    }
+
+    const timer = setTimeout(() => {
+      navigator.serviceWorker.removeEventListener('message', handler);
+      reject(new Error('SW fetch timeout'));
+    }, 30000);
+
+    function handler(evt) {
+      const d = evt.data;
+      if (!d || d.type !== 'DRIVE_FETCH_RESULT' || d.reqId !== reqId) return;
+      navigator.serviceWorker.removeEventListener('message', handler);
+      clearTimeout(timer);
+      if (!d.ok && d.error) { reject(new Error(d.error)); return; }
+      const text = d.text || '';
+      resolve({
+        ok: d.ok,
+        status: d.status,
+        json: async () => JSON.parse(text),
+        text: async () => text,
+      });
+    }
+
+    navigator.serviceWorker.addEventListener('message', handler);
+
+    const msg = {
+      type: 'DRIVE_FETCH',
+      reqId,
+      url,
+      method: options.method || 'GET',
+      headers: options.headers || {},
+      body: bodyBuf,
+      bodyType
+    };
+    // Trasferisci il buffer per evitare la copia (importante per PDF grandi)
+    if (bodyBuf) sw.postMessage(msg, [bodyBuf]);
+    else sw.postMessage(msg);
+  });
+}
+
 // ── Drive silent refresh ─────────────────────────────────────────────────────
 // Richiede un nuovo access_token Drive senza mostrare UI (prompt:'').
 // Restituisce una Promise che si risolve con il nuovo token o rigetta su errore.
@@ -2896,13 +2964,14 @@ async function uploadAllegatoDrive(inputEl, apptId) {
   toast('⏳ Caricamento allegato…');
 
   // Upload in due step (come rapportini) per evitare problemi FormData/multipart su Android/iOS
+  // _swFetch() bypassa il bug WKWebView su iOS usando il canale postMessage del SW
   let _attachStep = 'step1';
   try {
     // Step 1: crea il record metadati
-    const metaResp = await fetch('https://www.googleapis.com/drive/v3/files', {
+    const metaResp = await _swFetch('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
       headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: file.name, parents: [attachFolderId], mimeType: file.type || 'application/octet-stream' })
+      body: new Blob([JSON.stringify({ name: file.name, parents: [attachFolderId], mimeType: file.type || 'application/octet-stream' })], { type: 'application/json' })
     });
     if (!metaResp.ok) {
       const err = await metaResp.json().catch(() => ({}));
@@ -2917,7 +2986,7 @@ async function uploadAllegatoDrive(inputEl, apptId) {
     const fileId = created.id;
     // Step 2: carica il contenuto binario
     _attachStep = 'step2';
-    const uploadResp = await fetch(
+    const uploadResp = await _swFetch(
       `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,webViewLink`,
       {
         method: 'PATCH',
@@ -2927,7 +2996,7 @@ async function uploadAllegatoDrive(inputEl, apptId) {
     );
     if (!uploadResp.ok) {
       console.error('Drive allegato upload content error', uploadResp.status);
-      fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${_driveToken}` } }).catch(() => {});
+      _swFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${_driveToken}` } }).catch(() => {});
       toast(`⚠️ Upload allegato fallito (${uploadResp.status})`);
       if (lbl) lbl.style.opacity = '1';
       return;
@@ -2935,10 +3004,10 @@ async function uploadAllegatoDrive(inputEl, apptId) {
     const driveFile = await uploadResp.json();
 
     // Rendi pubblico con link
-    await fetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}/permissions`, {
+    await _swFetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}/permissions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'reader', type: 'anyone' })
+      body: new Blob([JSON.stringify({ role: 'reader', type: 'anyone' })], { type: 'application/json' })
     }).catch(() => {});
 
     // Salva nell'appuntamento principale
@@ -3022,14 +3091,15 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
   // Upload in due step per evitare problemi con FormData/multipart su alcuni browser mobile:
   //   Step 1: crea il file con i metadati (JSON) → ottieni fileId
   //   Step 2: carica il contenuto binario (PDF) con PATCH
+  // _swFetch() bypassa il bug WKWebView su iOS usando il canale postMessage del SW
 
   let _uploadStep = 'step1';
   try {
     // ── STEP 1: crea il record metadati ──────────────────────────────
-    const metaResp = await fetch('https://www.googleapis.com/drive/v3/files', {
+    const metaResp = await _swFetch('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
       headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: filename, parents: [GCAL.DRIVE_FOLDER_ID], mimeType: 'application/pdf' })
+      body: new Blob([JSON.stringify({ name: filename, parents: [GCAL.DRIVE_FOLDER_ID], mimeType: 'application/pdf' })], { type: 'application/json' })
     });
 
     if (!metaResp.ok) {
@@ -3068,7 +3138,7 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
 
     // ── STEP 2: carica il contenuto PDF ──────────────────────────────
     _uploadStep = 'step2';
-    const uploadResp = await fetch(
+    const uploadResp = await _swFetch(
       `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,webViewLink`,
       {
         method: 'PATCH',
@@ -3092,7 +3162,7 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
       const err2 = await uploadResp.json().catch(() => ({}));
       console.error('Drive upload content error', uploadResp.status, err2);
       // Il file stub è stato creato ma il contenuto non è stato caricato — prova a cancellarlo
-      fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      _swFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${_driveToken}` }
       }).catch(() => {});
       toast(`⚠️ Upload Drive fallito (${uploadResp.status}) — rapportino salvato solo localmente`);
@@ -4352,7 +4422,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.34'; // fix iOS Drive: SW v10 materializza ANCHE la risposta → new Response locale, WKWebView la consegna correttamente
+const _APP_VERSION = '2.35'; // fix iOS Drive: _swFetch() usa DRIVE_FETCH postMessage→SW→DRIVE_FETCH_RESULT, bypassa WKWebView fetch-event bug
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {

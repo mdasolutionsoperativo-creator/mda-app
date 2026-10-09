@@ -16,59 +16,15 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // ── Cross-origin (Google APIs, Drive, Calendar, ecc.) ─────────────────────
-  // iOS WKWebView dual-stream bug:
-  //   Bug 1 (REQUEST): il body stream di e.request viene perso → materializzare con blob()
-  //   Bug 2 (RESPONSE): il ReadableStream esterno (da googleapis.com) non viene consegnato
-  //                     al thread principale → leggere il body nel SW e creare new Response
-  //                     locale con Blob materializzato, così iOS può consegnarlo senza problemi
+  // Cross-origin (Calendar, GIS, ecc.) — passthrough con clone() per preservare il body.
+  // Le chiamate Drive API vengono gestite separatamente tramite DRIVE_FETCH postMessage
+  // per evitare il bug WKWebView di consegna della risposta al thread principale.
   if (url.origin !== self.location.origin) {
-    e.respondWith(
-      (async () => {
-        const method = e.request.method;
-
-        // GET/HEAD: nessun body di richiesta, nessun rischio body-stream
-        if (method === 'GET' || method === 'HEAD') {
-          try {
-            const resp = await fetch(e.request);
-            // Materializza anche la risposta per sicurezza su iOS
-            const body = await resp.blob();
-            return new Response(body, {
-              status: resp.status,
-              headers: { 'Content-Type': resp.headers.get('Content-Type') || 'application/octet-stream' }
-            });
-          } catch(_) { return fetch(e.request); }
-        }
-
-        // POST/PATCH/PUT: doppia materializzazione (request body + response body)
-        let reqBody = null;
-        try { reqBody = await e.request.blob(); } catch(_) {}
-
-        const reqHeaders = {};
-        try { e.request.headers.forEach((v, k) => { reqHeaders[k] = v; }); } catch(_) {}
-
-        // Chiamata reale dalla SW context (bypassa le restrizioni CORS di WKWebView)
-        const resp = await fetch(e.request.url, {
-          method,
-          headers: reqHeaders,
-          body: reqBody && reqBody.size > 0 ? reqBody : null
-        });
-
-        // Materializza la RISPOSTA in un Blob nel SW, poi crea una nuova Response locale.
-        // Se tornassimo resp direttamente, iOS WKWebView non riesce a leggere lo stream
-        // esterno nel thread principale → fetch() lancia "Load failed" anche se la richiesta
-        // è arrivata e Google ha risposto correttamente.
-        const respBody = await resp.blob();
-        return new Response(respBody, {
-          status: resp.status,
-          headers: { 'Content-Type': resp.headers.get('Content-Type') || 'application/json' }
-        });
-      })()
-    );
+    e.respondWith(fetch(e.request.clone()));
     return;
   }
 
-  // ── Same-origin ────────────────────────────────────────────────────────────
+  // Same-origin: html sempre dalla rete, static cache-first
   const p = url.pathname;
   if (p === '/mda-app/' || p.endsWith('.html')) {
     e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
@@ -77,6 +33,32 @@ self.addEventListener('fetch', e => {
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
 });
 
-self.addEventListener('message', e => {
-  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
+// ── DRIVE_FETCH via postMessage ────────────────────────────────────────────────
+// Su iOS WKWebView, la risposta di un fetch cross-origin non può essere consegnata
+// in modo affidabile al thread principale tramite il fetch event (bug WKWebView).
+// Soluzione: l'app invia DRIVE_FETCH tramite postMessage; il SW effettua il vero
+// fetch direttamente dalla propria sandbox (non soggetto alle restrizioni WKWebView)
+// e risponde con DRIVE_FETCH_RESULT via postMessage.
+self.addEventListener('message', async e => {
+  if (e.data?.type === 'SKIP_WAITING') { self.skipWaiting(); return; }
+
+  if (e.data?.type !== 'DRIVE_FETCH') return;
+
+  const { reqId, url, method, headers, body, bodyType } = e.data;
+  try {
+    let fetchBody = null;
+    if (body instanceof ArrayBuffer && body.byteLength > 0) {
+      fetchBody = new Blob([body], { type: bodyType || 'application/octet-stream' });
+    }
+    const resp = await fetch(url, { method, headers, body: fetchBody });
+    const ok = resp.ok;
+    const status = resp.status;
+    const text = await resp.text();
+    if (e.source) e.source.postMessage({ type: 'DRIVE_FETCH_RESULT', reqId, ok, status, text });
+  } catch(err) {
+    if (e.source) e.source.postMessage({
+      type: 'DRIVE_FETCH_RESULT', reqId, ok: false, status: 0,
+      error: (err && err.message) || 'network error'
+    });
+  }
 });
