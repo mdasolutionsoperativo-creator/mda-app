@@ -937,12 +937,12 @@ const CONFIG = {
     indirizzo: ''
   },
   tecnici: {
-    '1111': { id: 'matteo',  nome: 'Matteo Mare',     iniziali: 'MM', colore: '#3b82f6' },
-    '2222': { id: 'abramo',  nome: 'Abramo Bounine',   iniziali: 'AB', colore: '#10b981' },
-    '3333': { id: 'brigen',  nome: 'Brigen',           iniziali: 'BR', colore: '#f59e0b' },
-    '4444': { id: 'senny',   nome: 'Senny Fasil',      iniziali: 'SF', colore: '#8b5cf6' },
-    '5555': { id: 'teo',     nome: 'Teo',              iniziali: 'TE', colore: '#ef4444' },
-    '2021': { id: 'admin',   nome: 'Marco De Cesare',  iniziali: 'MC', colore: '#1e40af', isAdmin: true }
+    '1111': { id: 'matteo',  nome: 'Matteo Mare',     iniziali: 'MM', colore: '#3b82f6', email: 'matteo77service@gmail.com' },
+    '2222': { id: 'abramo',  nome: 'Abramo Bounine',   iniziali: 'AB', colore: '#10b981', email: 'abramo.bounine9@gmail.com' },
+    '3333': { id: 'brigen',  nome: 'Brigen',           iniziali: 'BR', colore: '#f59e0b', email: 'brigeltheboss@gmail.com' },
+    '4444': { id: 'senny',   nome: 'Senny Fasil',      iniziali: 'SF', colore: '#8b5cf6', email: 'sened.balo@gmail.com' },
+    '5555': { id: 'teo',     nome: 'Teo',              iniziali: 'TE', colore: '#ef4444', email: 'mateogjyli@gmail.com' },
+    '2021': { id: 'admin',   nome: 'Marco De Cesare',  iniziali: 'MC', colore: '#1e40af', isAdmin: true, email: 'mdasolutions.operativo@gmail.com' }
   }
 };
 
@@ -2546,7 +2546,7 @@ function gisLoaded() {
         if (_pendingRappDriveUpload) {
           // Silent reconnect fallito con rapportino in attesa → tenta connect interattivo (popup Google)
           toast('☁️ Autorizza Drive per caricare il rapportino…');
-          try { _driveTokenClient.requestAccessToken({ prompt: 'consent' }); } catch(e) {
+          try { _driveTokenClient.requestAccessToken({ prompt: 'consent', hint: currentTech?.email || '' }); } catch(e) {
             _pendingRappDriveUpload = null;
             toast('⚠️ Drive non disponibile — rapportino salvato solo in locale');
           }
@@ -2555,9 +2555,12 @@ function gisLoaded() {
         }
         return;
       }
-      // Verifica che Google abbia concesso esattamente lo scope richiesto (non drive.file al posto di drive)
-      const grantedScopes = (resp.scope || '').split(' ');
-      if (!grantedScopes.includes(GCAL.DRIVE_SCOPE)) {
+      // Verifica scope solo se Google lo ha esplicitamente restituito.
+      // Durante un silent refresh (prompt:'') Google spesso NON include resp.scope nella risposta —
+      // in quel caso il token è comunque valido con lo scope già autorizzato → non rifiutare.
+      // Rifiuta solo se resp.scope è NON VUOTO e non include lo scope richiesto (downgrade esplicito).
+      const grantedScopeStr = (resp.scope || '').trim();
+      if (grantedScopeStr && !grantedScopeStr.split(' ').includes(GCAL.DRIVE_SCOPE)) {
         console.error('Drive: scope concesso non corrisponde', resp.scope, 'richiesto', GCAL.DRIVE_SCOPE);
         driveUpdateUI(false);
         toast('⚠️ Drive: autorizzazione incompleta — tocca "Connetti" e accetta tutti i permessi richiesti');
@@ -2601,11 +2604,39 @@ function _gcalTryRestore() {
     }
   } else if (currentTech && _tokenClient) {
     // Token assente o scaduto: richiedi silenziosamente.
-    // Se già autorizzato → nessun popup; se prima volta → Google mostra il consenso.
-    _tokenClient.requestAccessToken({ prompt: '' });
+    // hint: email del tecnico → Google salta il picker account su dispositivi con più account.
+    _tokenClient.requestAccessToken({ prompt: '', hint: currentTech.email || '' });
   }
 }
 
+// ── Drive silent refresh ─────────────────────────────────────────────────────
+// Richiede un nuovo access_token Drive senza mostrare UI (prompt:'').
+// Restituisce una Promise che si risolve con il nuovo token o rigetta su errore.
+function _driveSilentRefresh() {
+  return new Promise((resolve, reject) => {
+    if (!_driveTokenClient) { reject(new Error('driveTokenClient not ready')); return; }
+    const origCallback = _driveTokenClient.callback;
+    _driveTokenClient.callback = (resp) => {
+      _driveTokenClient.callback = origCallback; // ripristina sempre
+      if (resp.error) { reject(resp); return; }
+      // Scope check lenient (come nella callback principale)
+      const grantedScopeStr = (resp.scope || '').trim();
+      if (grantedScopeStr && !grantedScopeStr.split(' ').includes(GCAL.DRIVE_SCOPE)) {
+        reject(new Error('scope_insufficient')); return;
+      }
+      _driveToken = resp.access_token;
+      const exp = Date.now() + ((resp.expires_in || 3600) - 60) * 1000;
+      localStorage.setItem('mda_drive_tok', _driveToken);
+      localStorage.setItem('mda_drive_exp', exp);
+      localStorage.setItem('mda_drive_scope', GCAL.DRIVE_SCOPE);
+      driveUpdateUI(true);
+      resolve(_driveToken);
+    };
+    _driveTokenClient.requestAccessToken({ prompt: '', hint: currentTech?.email || '' });
+  });
+}
+
+// ── Calendar silent refresh ───────────────────────────────────────────────────
 // Silent token refresh: requests a new access_token without user prompt.
 // Returns a Promise that resolves when the token arrives (or rejects on failure).
 function _gcalSilentRefresh() {
@@ -2655,8 +2686,8 @@ function _driveTryRestore() {
     driveUpdateUI(true);
   } else if (currentTech && _driveTokenClient && GCAL.DRIVE_FOLDER_ID) {
     // Token assente o scaduto: richiedi silenziosamente.
-    // Sicuri che lo scope è corretto (passato il check sopra), il silent non darà scope sbagliato.
-    _driveTokenClient.requestAccessToken({ prompt: '' });
+    // hint: email del tecnico → Google salta il picker account.
+    _driveTokenClient.requestAccessToken({ prompt: '', hint: currentTech.email || '' });
   }
 }
 
@@ -2670,7 +2701,7 @@ function gcalCheckConfig() {
 function gcalConnect() {
   if (!GCAL.CLIENT_ID) { toast('GCal non configurato'); return; }
   if (!_tokenClient) { toast('Libreria Google non caricata ancora, riprova tra un secondo'); return; }
-  _tokenClient.requestAccessToken({ prompt: _gcalToken ? '' : 'consent' });
+  _tokenClient.requestAccessToken({ prompt: _gcalToken ? '' : 'consent', hint: currentTech?.email || '' });
 }
 
 function gcalDisconnect() {
@@ -2685,7 +2716,7 @@ function gcalDisconnect() {
 /* ══ Google Drive ═══════════════════════════════════════ */
 function driveConnect() {
   if (!_driveTokenClient) { toast('Libreria Google non ancora caricata, riprova tra un secondo'); return; }
-  _driveTokenClient.requestAccessToken({ prompt: _driveToken ? '' : 'consent' });
+  _driveTokenClient.requestAccessToken({ prompt: _driveToken ? '' : 'consent', hint: currentTech?.email || '' });
 }
 
 function driveDisconnect() {
@@ -2953,7 +2984,7 @@ function _driveTokenInvalid(reason) {
   if (reason) toast(reason);
 }
 
-async function uploadRapportinoDrive(pdfBlob, filename) {
+async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
   if (!_driveToken) return; // non connesso, skip silenzioso
   if (!GCAL.DRIVE_FOLDER_ID) return; // non configurato
 
@@ -2982,14 +3013,22 @@ async function uploadRapportinoDrive(pdfBlob, filename) {
     if (!metaResp.ok) {
       const err = await metaResp.json().catch(() => ({}));
       console.error('Drive create error', metaResp.status, err);
-      if (metaResp.status === 401) {
-        _driveTokenInvalid('⚠️ Sessione Drive scaduta — riconnetti Google Drive');
+      if (metaResp.status === 401 && !_retried) {
+        // Token scaduto → tenta refresh silenzioso e riprova una volta
+        try {
+          await _driveSilentRefresh();
+          return uploadRapportinoDrive(pdfBlob, filename, true);
+        } catch (e) {
+          _driveTokenInvalid('⚠️ Sessione Drive scaduta — premi "Connetti Drive"');
+        }
+      } else if (metaResp.status === 401) {
+        _driveTokenInvalid('⚠️ Sessione Drive scaduta — premi "Connetti Drive"');
       } else if (metaResp.status === 403) {
         _driveTokenInvalid(null);
         if (_driveTokenClient) {
           _pendingRappDriveUpload = { blob: pdfBlob, name: filename };
           toast('☁️ Serve una nuova autorizzazione Drive — tocca OK nel popup Google…');
-          try { _driveTokenClient.requestAccessToken({ prompt: 'consent' }); } catch(ex) {
+          try { _driveTokenClient.requestAccessToken({ prompt: 'consent', hint: currentTech?.email || '' }); } catch(ex) {
             _pendingRappDriveUpload = null;
             toast('⚠️ Drive non autorizzato — rapportino salvato solo localmente');
           }
@@ -4293,7 +4332,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.27'; // fix: verifica scope concesso da Google (resp.scope) nella callback Drive; uploadAllegatoDrive riscritto in due step come rapportini (no FormData su Android)
+const _APP_VERSION = '2.28'; // fix: resp.scope check lenient (silent refresh non include scope → non rifiutare); login_hint per saltare picker account Android; _driveSilentRefresh() con retry automatico su 401
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
