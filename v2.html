@@ -448,6 +448,10 @@
           </div>
         </div>
         <button class="btn btn-primary" onclick="generaPresenzeMie()" style="font-size:14px;padding:10px;width:100%">📋 Scarica mie presenze</button>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+          <p style="font-size:12px;color:var(--sub);margin-bottom:8px">☁️ Carica i dati dei tuoi rapportini su Drive così il responsabile può vedere le tue ore nel riepilogo mensile.</p>
+          <button id="btn-upload-presenze" onclick="uploadTuttiRapportiniDrive()" style="font-size:13px;padding:9px 16px;background:#10b981;color:#fff;border:none;border-radius:8px;cursor:pointer;width:100%;font-weight:600">☁️ Carica i miei dati su Drive</button>
+        </div>
       </div>
     </div>
 
@@ -522,6 +526,11 @@
     <!-- Admin: Conteggio ore e presenze -->
     <div id="ore-section" style="display:none;margin-top:16px">
       <p class="section-title">⏱ Ore &amp; Presenze</p>
+      <div class="card" style="padding:14px;margin-bottom:10px;border-left:3px solid #3b82f6">
+        <p style="font-size:14px;font-weight:700;margin-bottom:4px">🔄 Sincronizza presenze da Drive</p>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:10px">Scarica i dati dei rapportini caricati dai tecnici su Drive e li aggiunge al database locale. Poi genera il report presenze o il riepilogo ore. <strong>Prima di usarlo chiedi ai tecnici di premere "Carica i miei dati su Drive" nel loro pannello.</strong></p>
+        <button id="btn-sync-presenze" class="btn-sm primary" onclick="sincronizzaPresenzeDrive()" style="font-size:13px;padding:9px 16px">🔄 Sincronizza da Drive</button>
+      </div>
       <div class="card" style="padding:14px;margin-bottom:10px">
         <p style="font-size:13px;color:var(--sub);margin-bottom:12px">Riepilogo sintetico ore per cliente e tipo intervento.</p>
         <button class="btn-sm primary" onclick="esportaOreExcel()" style="font-size:13px;padding:9px 16px">📊 Riepilogo ore (Excel)</button>
@@ -2483,6 +2492,8 @@ async function generaPDF() {
   const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
   archivio.push(rapp);
   localStorage.setItem('mda_rapportini', JSON.stringify(archivio));
+  // Carica automaticamente il JSON di metadata su Drive (per sync presenze admin)
+  if (GCAL.DRIVE_FOLDER_ID && _driveToken) uploadRappMetaDrive(rapp);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -3205,6 +3216,109 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
     console.error(`Drive upload exception [${_uploadStep}]`, e);
     // Mostra step e messaggio per diagnostica (es. "Load failed" su iOS = WKWebView error)
     toast(`⚠️ Upload Drive fallito [${_uploadStep}] — ${e?.message || 'errore di rete'}`);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UPLOAD METADATA RAPPORTINO SU DRIVE (sidecar JSON per sync presenze)
+═══════════════════════════════════════════════════════════ */
+async function uploadRappMetaDrive(rapp) {
+  if (!_driveToken || !GCAL.DRIVE_FOLDER_ID) return;
+  const filename = 'rapp_meta_' + rapp.id + '.json';
+  const jsonContent = new Blob([JSON.stringify(rapp)], { type: 'application/json' });
+  try {
+    const s1 = await _swFetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+      body: new Blob([JSON.stringify({ name: filename, parents: [GCAL.DRIVE_FOLDER_ID], mimeType: 'application/json' })], { type: 'application/json' })
+    });
+    if (!s1.ok) { console.warn('rapp_meta step1 failed', s1.status); return; }
+    const { id: fid } = await s1.json();
+    await _swFetch(`https://www.googleapis.com/upload/drive/v3/files/${fid}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+      body: jsonContent
+    });
+    console.log('rapp_meta uploaded:', filename);
+  } catch (e) { console.warn('rapp_meta upload failed:', e); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CARICA TUTTI I RAPPORTINI LOCALI SU DRIVE (tecnico — retroattivo)
+═══════════════════════════════════════════════════════════ */
+async function uploadTuttiRapportiniDrive() {
+  if (!_driveToken) { toast('☁️ Connetti prima Drive nelle Impostazioni'); return; }
+  if (!GCAL.DRIVE_FOLDER_ID) { toast('⚠️ Cartella Drive non configurata'); return; }
+  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  const miei = archivio.filter(r => !currentTech || r.tecnico === currentTech.id);
+  if (!miei.length) { toast('Nessun rapportino locale da caricare'); return; }
+  const btn = document.getElementById('btn-upload-presenze');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Caricamento…'; }
+  let ok = 0, err = 0;
+  for (const rapp of miei) {
+    try { await uploadRappMetaDrive(rapp); ok++; }
+    catch(e) { err++; }
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '☁️ Carica i miei dati su Drive'; }
+  toast(err === 0
+    ? `✅ Dati caricati su Drive (${ok} rapportini)`
+    : `⚠️ Caricati ${ok}, errori: ${err}`);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SINCRONIZZA PRESENZE DA DRIVE (admin)
+═══════════════════════════════════════════════════════════ */
+async function sincronizzaPresenzeDrive() {
+  if (!_driveToken) { toast('☁️ Connetti prima Drive nelle Impostazioni'); return; }
+  if (!GCAL.DRIVE_FOLDER_ID) { toast('⚠️ Cartella Drive non configurata'); return; }
+  const btn = document.getElementById('btn-sync-presenze');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Sincronizzazione…'; }
+  try {
+    // Lista tutti i file rapp_meta_*.json nella cartella Drive
+    const metaFiles = [];
+    let pageToken = '';
+    do {
+      const q = encodeURIComponent(`'${GCAL.DRIVE_FOLDER_ID}' in parents and name contains 'rapp_meta_' and trashed=false`);
+      const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=1000${pageToken ? '&pageToken='+pageToken : ''}`;
+      const resp = await _swFetch(url, { headers: { Authorization: `Bearer ${_driveToken}` } });
+      if (!resp.ok) { toast(`⚠️ Errore Drive lista file (${resp.status})`); return; }
+      const data = await resp.json();
+      metaFiles.push(...(data.files || []));
+      pageToken = data.nextPageToken || '';
+    } while (pageToken);
+
+    if (!metaFiles.length) {
+      toast('Nessun dato trovato su Drive — chiedi ai ragazzi di premere "Carica i miei dati su Drive"');
+      return;
+    }
+
+    // Scarica ogni JSON e unisci nell'archivio locale (deduplicazione per rapp.id)
+    const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+    const esistenti = new Set(archivio.map(r => r.id));
+    let nuovi = 0;
+    for (const f of metaFiles) {
+      try {
+        const r = await _swFetch(
+          `https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`,
+          { headers: { Authorization: `Bearer ${_driveToken}` } }
+        );
+        if (!r.ok) continue;
+        const rapp = await r.json();
+        if (rapp?.id && !esistenti.has(rapp.id)) {
+          archivio.push(rapp);
+          esistenti.add(rapp.id);
+          nuovi++;
+        }
+      } catch(e) { console.warn('Errore lettura', f.name, e); }
+    }
+    localStorage.setItem('mda_rapportini', JSON.stringify(archivio));
+    toast(nuovi > 0
+      ? `✅ Sincronizzazione OK: ${nuovi} nuovi rapportini (${archivio.length} totali in archivio)`
+      : `✅ Già aggiornato — nessun nuovo rapportino (${archivio.length} in archivio)`);
+  } catch(e) {
+    toast(`⚠️ Errore: ${e?.message || 'errore di rete'}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizza da Drive'; }
   }
 }
 
@@ -4455,7 +4569,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.36'; // fix iOS PDF vuoto: _downloadPDF() usa Web Share API su iOS invece di doc.save() che produce blob vuoti in WKWebView
+const _APP_VERSION = '2.37'; // sync presenze Drive: JSON sidecar per ogni rapportino + uploadTuttiRapportiniDrive() (tecnico) + sincronizzaPresenzeDrive() (admin)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
