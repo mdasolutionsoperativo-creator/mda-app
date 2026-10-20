@@ -3226,6 +3226,17 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
 async function uploadRappMetaDrive(rapp) {
   if (!_driveToken || !GCAL.DRIVE_FOLDER_ID) return;
   const filename = 'rapp_meta_' + rapp.id + '.json';
+  // Controlla se esiste già — evita duplicati
+  try {
+    const q = encodeURIComponent(`'${GCAL.DRIVE_FOLDER_ID}' in parents and name='${filename}' and trashed=false`);
+    const chk = await _swFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {
+      headers: { Authorization: `Bearer ${_driveToken}` }
+    });
+    if (chk.ok) {
+      const { files } = await chk.json();
+      if (files && files.length > 0) { console.log('rapp_meta già presente, skip:', filename); return; }
+    }
+  } catch(e) { /* se il check fallisce, procedi comunque con l'upload */ }
   const jsonContent = new Blob([JSON.stringify(rapp)], { type: 'application/json' });
   try {
     const s1 = await _swFetch('https://www.googleapis.com/drive/v3/files', {
@@ -4630,7 +4641,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.40'; // generaReportSENED: aggiunge fogli Riepilogo per Cliente + Dettaglio Rapportini al file presenze admin
+const _APP_VERSION = '2.41'; // uploadRappMetaDrive: check duplicati prima di caricare su Drive (evita rapp_meta multipli)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
