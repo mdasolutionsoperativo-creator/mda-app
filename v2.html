@@ -4018,6 +4018,53 @@ function generaReportSENED() {
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
   }
 
+  // ── Foglio Riepilogo per Cliente (stesso mese/anno) ──────
+  const archivioMese = archivio.filter(r => {
+    if (!r.data) return false;
+    const [ry, rm] = r.data.split('-');
+    return +ry === anno && +rm === mese;
+  });
+
+  const grouped = {};
+  for (const r of archivioMese) {
+    const _cl = CLIENTI.find(c => c.id === r.cliente);
+    const _cn = _cl ? _cl.nome : (r.cliente || 'Sconosciuto');
+    const _tk = (r.tipo || '').toLowerCase().includes('ordinaria') ? 'Manutenzione Ordinaria' : 'Intervento Extra';
+    const _k = _cn + '||' + _tk;
+    if (!grouped[_k]) grouped[_k] = { cliente: _cn, tipo: _tk, ore: 0, num: 0 };
+    grouped[_k].ore += (r.ore || 0);
+    grouped[_k].num++;
+  }
+  const riepData = [['Cliente', 'Tipo Intervento', 'Ore Totali', 'N° Rapportini']];
+  const riepRows = Object.values(grouped).sort((a, b) => a.cliente.localeCompare(b.cliente) || a.tipo.localeCompare(b.tipo));
+  for (const rr of riepRows) riepData.push([rr.cliente, rr.tipo, parseFloat(rr.ore.toFixed(2)), rr.num]);
+  const _totOre = riepRows.reduce((s, r) => s + r.ore, 0);
+  const _totNum = riepRows.reduce((s, r) => s + r.num, 0);
+  riepData.push(['', '', '', '']);
+  riepData.push(['TOTALE', '', parseFloat(_totOre.toFixed(2)), _totNum]);
+  const wsRiep = XLSX.utils.aoa_to_sheet(riepData);
+  wsRiep['!cols'] = [{wch:38},{wch:24},{wch:14},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, wsRiep, 'Riepilogo per Cliente');
+
+  // ── Foglio Dettaglio Rapportini (stesso mese/anno) ───────
+  const detData = [['N° Rapportino', 'Data', 'Tecnico', 'Cliente', 'Tipo Intervento', 'Ore']];
+  const detSorted = [...archivioMese].sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+  for (const r of detSorted) {
+    const _dc = CLIENTI.find(c => c.id === r.cliente);
+    const _dt = Object.values(CONFIG.tecnici).find(t => t.id === r.tecnico);
+    detData.push([
+      'MDA-2026-' + String(r.numero || 0).padStart(4, '0'),
+      r.data || '',
+      _dt?.nome || r.tecnico || '',
+      _dc?.nome || r.cliente || '',
+      r.tipo || '',
+      parseFloat((r.ore || 0).toFixed(2))
+    ]);
+  }
+  const wsDet = XLSX.utils.aoa_to_sheet(detData);
+  wsDet['!cols'] = [{wch:16},{wch:12},{wch:15},{wch:38},{wch:26},{wch:8}];
+  XLSX.utils.book_append_sheet(wb, wsDet, 'Dettaglio Rapportini');
+
   XLSX.writeFile(wb, `Presenze_${meseNome}_${anno}.xlsx`);
   toast(`✅ Report presenze ${meseNome} ${anno} scaricato`);
 }
@@ -4583,7 +4630,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.39'; // fix 401 su sincronizzaPresenzeDrive: retry con silent refresh come uploadRapportinoDrive
+const _APP_VERSION = '2.40'; // generaReportSENED: aggiunge fogli Riepilogo per Cliente + Dettaglio Rapportini al file presenze admin
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
