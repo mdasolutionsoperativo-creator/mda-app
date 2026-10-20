@@ -2342,7 +2342,8 @@ async function generaPDF() {
   const bw2 = commessa ? (CW - 6) / 3 : (CW - 3) / 2;
   drawBox('Cliente', M, y, commessa ? bw2 * 1.5 + 3 : bw2, 20);
   doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30,41,59);
-  doc.text(cliente ? cliente.nome : '-', M + 3, y + 13, { maxWidth: (commessa ? bw2 * 1.5 : bw2) - 6 });
+  const _clienteLabel = (commessa ? commessa + ' ' : '') + (cliente ? cliente.nome : '-');
+  doc.text(_clienteLabel, M + 3, y + 13, { maxWidth: (commessa ? bw2 * 1.5 : bw2) - 6 });
 
   const impiCol = M + (commessa ? bw2 * 1.5 + 6 : bw2 + 3);
   const impiW = commessa ? bw2 * 0.75 : bw2;
@@ -2434,8 +2435,8 @@ async function generaPDF() {
 
   // Genera blob PDF unico — usato sia per il download locale che per Drive
   const nomeCliente = (cliente ? cliente.nome : 'Cliente').replace(/[^a-zA-Z0-9À-ÿ]/g, '_').replace(/_+/g,'_');
-  const nomeCommessa = commessa ? '_' + commessa.replace(/[^a-zA-Z0-9]/g,'_') : '';
-  const filename = `${data}_${nomeCliente}${nomeCommessa}_${numRapp}.pdf`;
+  const commessaPrefix = commessa ? commessa.replace(/[^a-zA-Z0-9]/g,'_') + '_' : '';
+  const filename = `${data}_${commessaPrefix}${nomeCliente}_${numRapp}.pdf`;
   const pdfBlob = doc.output('blob');
 
   // Download locale — su iOS usa Web Share API (pannello nativo Condividi/Salva)
@@ -3268,11 +3269,11 @@ async function uploadTuttiRapportiniDrive() {
 /* ═══════════════════════════════════════════════════════════
    SINCRONIZZA PRESENZE DA DRIVE (admin)
 ═══════════════════════════════════════════════════════════ */
-async function sincronizzaPresenzeDrive() {
+async function sincronizzaPresenzeDrive(_retried = false) {
   if (!_driveToken) { toast('☁️ Connetti prima Drive nelle Impostazioni'); return; }
   if (!GCAL.DRIVE_FOLDER_ID) { toast('⚠️ Cartella Drive non configurata'); return; }
   const btn = document.getElementById('btn-sync-presenze');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Sincronizzazione…'; }
+  if (btn && !_retried) { btn.disabled = true; btn.textContent = '⏳ Sincronizzazione…'; }
   try {
     // Lista tutti i file rapp_meta_*.json nella cartella Drive
     const metaFiles = [];
@@ -3281,7 +3282,20 @@ async function sincronizzaPresenzeDrive() {
       const q = encodeURIComponent(`'${GCAL.DRIVE_FOLDER_ID}' in parents and name contains 'rapp_meta_' and trashed=false`);
       const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=1000${pageToken ? '&pageToken='+pageToken : ''}`;
       const resp = await _swFetch(url, { headers: { Authorization: `Bearer ${_driveToken}` } });
-      if (!resp.ok) { toast(`⚠️ Errore Drive lista file (${resp.status})`); return; }
+      if (!resp.ok) {
+        if (resp.status === 401 && !_retried) {
+          // Token scaduto → refresh silenzioso e riprova una volta
+          try {
+            await _driveSilentRefresh();
+            return sincronizzaPresenzeDrive(true);
+          } catch(e) {
+            _driveTokenInvalid('⚠️ Sessione Drive scaduta — vai in Impostazioni e riconnetti Drive');
+            return;
+          }
+        }
+        toast(`⚠️ Errore Drive lista file (${resp.status})`);
+        return;
+      }
       const data = await resp.json();
       metaFiles.push(...(data.files || []));
       pageToken = data.nextPageToken || '';
@@ -4569,7 +4583,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.37'; // sync presenze Drive: JSON sidecar per ogni rapportino + uploadTuttiRapportiniDrive() (tecnico) + sincronizzaPresenzeDrive() (admin)
+const _APP_VERSION = '2.39'; // fix 401 su sincronizzaPresenzeDrive: retry con silent refresh come uploadRapportinoDrive
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
