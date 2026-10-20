@@ -3791,7 +3791,7 @@ function esportaOreExcel() {
     const cliente = CLIENTI.find(c => c.id === r.cliente);
     const clienteNome = cliente ? cliente.nome : (r.cliente || 'Sconosciuto');
     const tipo = (r.tipo || '');
-    const tipoKey = tipo.toLowerCase().includes('ordinaria') ? 'Manutenzione Ordinaria' : 'Intervento Extra';
+    const tipoKey = tipo.toLowerCase().includes('ordin') ? 'Manutenzione Ordinaria' : 'Intervento Extra';
     const key = clienteNome + '||' + tipoKey;
     if (!grouped[key]) grouped[key] = { cliente: clienteNome, tipo: tipoKey, ore: 0, num: 0 };
     grouped[key].ore += (r.ore || 0);
@@ -4040,7 +4040,7 @@ function generaReportSENED() {
   for (const r of archivioMese) {
     const _cl = CLIENTI.find(c => c.id === r.cliente);
     const _cn = _cl ? _cl.nome : (r.cliente || 'Sconosciuto');
-    const _tk = (r.tipo || '').toLowerCase().includes('ordinaria') ? 'Manutenzione Ordinaria' : 'Intervento Extra';
+    const _tk = (r.tipo || '').toLowerCase().includes('ordin') ? 'Manutenzione Ordinaria' : 'Intervento Extra';
     const _k = _cn + '||' + _tk;
     if (!grouped[_k]) grouped[_k] = { cliente: _cn, tipo: _tk, ore: 0, num: 0 };
     grouped[_k].ore += (r.ore || 0);
@@ -4641,7 +4641,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.41'; // uploadRappMetaDrive: check duplicati prima di caricare su Drive (evita rapp_meta multipli)
+const _APP_VERSION = '2.42'; // fix classificazione tipo: "MAN. ORDIN." ora riconosciuto come Manutenzione Ordinaria nel riepilogo
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
