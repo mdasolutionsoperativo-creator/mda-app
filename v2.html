@@ -1040,7 +1040,8 @@ let CLIENTI = JSON.parse(localStorage.getItem('mda_clienti') || JSON.stringify([
   { id: 'M542', codice: 'M 542', nome: "Terranova Orio al Serio", indirizzo: "Via Portico 71, Orio al Serio (BG)" },
   { id: 'M543', codice: 'M 543', nome: "Teddy Magazzino Cernusco", indirizzo: "Via Albert Einstein, 20088 Cernusco sul Naviglio (MI)" },
   { id: 'M544', codice: 'M 544', nome: "Asilo Nido Via Friuli", indirizzo: "Via Friuli, 20135 Milano (MI)" },
-  { id: 'M545', codice: 'M 545', nome: "Asilo Nido Grandate", indirizzo: "Via Roma, 22070 Grandate (CO)" },
+  { id: 'M545', codice: 'M 545', nome: "Asilo Nido Grandate (CO)", indirizzo: "Via Tornese, 10, 22070 Grandate CO" },
+  { id: 'M546', codice: 'M 546', nome: "Palazzo C.O.N.I. - VIA PIRANESI", indirizzo: "Via Giovanni Battista Piranesi, 46, 20137 Milano MI" },
   { id: 'E099', codice: 'E 099', nome: "Auditorium La Verdi", indirizzo: "Largo Gustav Mahler, 20136 Milano (MI)" },
   { id: 'E107', codice: 'E 107', nome: "Stab. Fiema", indirizzo: "Via Giovanni Keplero 4, 20016 Pero (MI)" },
   { id: 'E108', codice: 'E 108', nome: "Uff. P.za SS. Trinità", indirizzo: "Piazza SS. Trinità 6, Milano (MI)" },
@@ -4641,7 +4642,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.42'; // fix classificazione tipo: "MAN. ORDIN." ora riconosciuto come Manutenzione Ordinaria nel riepilogo
+const _APP_VERSION = '2.43'; // anagrafica: aggiornato indirizzo M545, aggiunto M546 Palazzo C.O.N.I. Via Piranesi
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
