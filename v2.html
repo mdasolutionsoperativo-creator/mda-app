@@ -3768,10 +3768,26 @@ async function techCalSync() {
       });
       imported++;
     }
+    // Rimuovi appuntamenti stale: gcalId presente in localStorage ma non più in GCal
+    // (= cancellati o riassegnati dall'admin). Consideriamo solo appuntamenti del tecnico
+    // corrente, con gcalId, nella finestra di sync (30gg fa → +120gg).
+    const activeGcalIds = new Set((data.items || []).filter(ev => ev.start?.dateTime).map(ev => ev.id));
+    const _winMin = Date.now() - 30*86400000;
+    const _winMax = Date.now() + 120*86400000;
+    const _inWin  = (a) => { const d = new Date(a.data).getTime(); return d >= _winMin && d <= _winMax; };
+    const _stale  = (a) => a.gcalId && a.tecnico === currentTech.id && _inWin(a) && !activeGcalIds.has(a.gcalId);
+    const _prevTot = appuntamenti.length + interventoExtra.length;
+    appuntamenti    = appuntamenti.filter(a => !_stale(a));
+    interventoExtra = interventoExtra.filter(a => !_stale(a));
+    const removedStale = _prevTot - (appuntamenti.length + interventoExtra.length);
+    if (removedStale > 0) needsSave = true;
     if (imported > 0 || needsSave) { saveAppuntamenti(); renderHome(); renderAgendaList(); }
     const ora = new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
-    if (info) info.textContent = `Ultima sync: ${ora} · ${imported > 0 ? imported + ' aggiornati/nuovi' : 'nessuna novità'}`;
-    toast(imported > 0 ? `⬇ ${imported} appuntament${imported===1?'o':'i'} aggiornati` : '✅ Agenda aggiornata');
+    const _staleMsg = removedStale > 0 ? ` · ${removedStale} rimossi` : '';
+    if (info) info.textContent = `Ultima sync: ${ora} · ${imported > 0 ? imported + ' aggiornati/nuovi' : 'nessuna novità'}${_staleMsg}`;
+    toast(removedStale > 0
+      ? `🗑 ${removedStale} appuntament${removedStale===1?'o':'i'} rimoss${removedStale===1?'o':'i'} · ${imported} aggiornati`
+      : imported > 0 ? `⬇ ${imported} appuntament${imported===1?'o':'i'} aggiornati` : '✅ Agenda aggiornata');
   } catch(e) {
     if (info) info.textContent = 'Errore di sincronizzazione';
     toast('⚠️ Errore connessione Calendar');
@@ -4642,7 +4658,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.43'; // anagrafica: aggiornato indirizzo M545, aggiunto M546 Palazzo C.O.N.I. Via Piranesi
+const _APP_VERSION = '2.44'; // fix techCalSync: rimuove appuntamenti stale (cancellati/riassegnati dall'admin)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
