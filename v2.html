@@ -1501,12 +1501,21 @@ function renderApptCard(a) {
   const isExtra = a.tipo === 'extra';
   const indirizzo = cliente.indirizzo || '';
   const hasDetail = !!(indirizzo || a.note);
-  // Colleghi di squadra: stessa data + stesso cliente + stessa ora di inizio
-  const colleghi = getAllAppts()
-    .filter(x => x.id !== a.id && x.clienteId === a.clienteId && x.data === a.data && x.ora === a.ora)
-    .map(x => Object.values(CONFIG.tecnici).find(t => t.id === x.tecnico))
-    .filter(Boolean)
-    .filter((t, i, arr) => arr.findIndex(u => u.id === t.id) === i); // dedup
+  // Colleghi di squadra: usa a.squadra se disponibile (sincronizzato da GCal),
+  // altrimenti fallback a lookup locale (funziona solo lato admin dove ci sono tutti gli appt)
+  let colleghi;
+  if (a.squadra && a.squadra.length > 1) {
+    colleghi = a.squadra
+      .filter(tid => tid !== a.tecnico)
+      .map(tid => Object.values(CONFIG.tecnici).find(t => t.id === tid))
+      .filter(Boolean);
+  } else {
+    colleghi = getAllAppts()
+      .filter(x => x.id !== a.id && x.clienteId === a.clienteId && x.data === a.data && x.ora === a.ora)
+      .map(x => Object.values(CONFIG.tecnici).find(t => t.id === x.tecnico))
+      .filter(Boolean)
+      .filter((t, i, arr) => arr.findIndex(u => u.id === t.id) === i); // dedup
+  }
 
   return `<div class="appt-card ${isExtra?'extra':''} ${a.completato?'completed':''}" id="appt-${a.id}"
       onclick="toggleApptDetail('${a.id}')" style="cursor:pointer;user-select:none">
@@ -1836,11 +1845,9 @@ function apriRapportinoDa(id) {
   if (a.ora) document.getElementById('rapp-ora-inizio').value = a.ora;
   if (a.ora_fine) document.getElementById('rapp-ora-fine').value = a.ora_fine;
 
-  // Commessa
-  if (a.commessa) {
-    const commessaEl = document.getElementById('rapp-commessa');
-    if (commessaEl) commessaEl.value = a.commessa;
-  }
+  // Commessa: usa a.commessa se disponibile, altrimenti il clienteId (es. "M242", "M183")
+  const commessaEl = document.getElementById('rapp-commessa');
+  if (commessaEl) commessaEl.value = (a.commessa || a.clienteId || '').trim();
 
   // Tipo intervento
   if (a.tipo_intervento) {
@@ -1998,6 +2005,9 @@ function salvaIntervento() {
 
       // ── Propaga modifiche a tutta la squadra ───────────
       if (squadra.length > 0) {
+        // Calcola la lista completa dei tecnici (questo + compagni)
+        const tuttiTecnici = [found.tecnico, ...squadra.map(x => x.tecnico)];
+        found.squadra = [...tuttiTecnici];
         for (const comp of squadra) {
           // Aggiorna i campi condivisi (NON il tecnico — ognuno mantiene il proprio)
           comp.data           = data;
@@ -2005,6 +2015,7 @@ function salvaIntervento() {
           comp.ora_fine       = oraFine || '';
           comp.tipo_intervento = tipoVal;
           comp.note           = note;
+          comp.squadra        = [...tuttiTecnici]; // aggiorna campo squadra anche sui compagni
           if (_gcalToken) gcalPushAppt(comp).catch(() => {});
         }
         saveApptArray(squadra);
@@ -2096,6 +2107,7 @@ function salvaIntervento() {
       const intervento = {
         id: 'e_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         tecnico: tId,
+        ...(tecnicoIds.length > 1 ? { squadra: [...tecnicoIds] } : {}),
         clienteId,
         data: d,
         ora,
@@ -2482,7 +2494,7 @@ async function generaPDF() {
   }
   const rapp = {
     id: 'r_' + Date.now(),
-    numero: numRapp - 1,
+    numero: rapportinoNum - 1, // rapportinoNum è già incrementato a riga precedente
     tecnico: tecnicoId,
     cliente: clienteId,
     commessa,
@@ -3226,6 +3238,10 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
 ═══════════════════════════════════════════════════════════ */
 async function uploadRappMetaDrive(rapp) {
   if (!_driveToken || !GCAL.DRIVE_FOLDER_ID) return;
+  // Salta rapportini incompleti (numero null/NaN = PDF non completato correttamente)
+  if (!rapp || !rapp.id || rapp.numero === null || rapp.numero === undefined || isNaN(rapp.numero)) {
+    console.log('rapp_meta: skip upload, dati incompleti (numero:', rapp?.numero, ')'); return;
+  }
   const filename = 'rapp_meta_' + rapp.id + '.json';
   // Controlla se esiste già — evita duplicati
   try {
@@ -3387,6 +3403,8 @@ function _apptToEvent(appt) {
       appt.completato ? '✅ COMPLETATO' : '',
       `[mda_id:${appt.id}]`,
       appt.clienteId ? `[mda_cid:${appt.clienteId}]` : '',
+      // Squadra: lista tecnici della squadra (letta dai tecnici in sync per mostrare "con chi lavoro")
+      (appt.squadra && appt.squadra.length > 1) ? `[mda_squad:${appt.squadra.join(',')}]` : '',
       // Allegati: uno per riga come [mda_al:DRIVE_ID|NOME|URL]
       ...(appt.allegati || []).map(al =>
         `[mda_al:${(al.id||'').replace(/[|\]]/g,'')}|${(al.nome||'').replace(/[|\]]/g,'_')}|${(al.url||'').replace(/[\]]/g,'')}]`
@@ -3741,7 +3759,9 @@ async function techCalSync() {
       const evClienteId = evCidMatch?.[1] || evClienteM?.id || '';
       const evClienteNome = evClienteM?.nome || (evClienteId ? CLIENTI.find(c=>c.id===evClienteId)?.nome : '') || ev.summary || '';
       const evTipo = ev.description?.match(/Tipo:\s*([^\n\[]+)/)?.[1]?.trim() || '';
-      const evNote = (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|\[mda_al:[^\]]+\]|✅ COMPLETATO/g,'').trim();
+      const evNote = (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|\[mda_al:[^\]]+\]|\[mda_squad:[^\]]+\]|✅ COMPLETATO/g,'').trim();
+      const evSquadMatch = ev.description?.match(/\[mda_squad:([^\]]+)\]/);
+      const evSquad = evSquadMatch ? evSquadMatch[1].split(',').map(s => s.trim()).filter(Boolean) : null;
       if (existing) {
         // Sincronizza tutti i campi che l'admin potrebbe aver modificato
         let changed = false;
@@ -3754,12 +3774,14 @@ async function techCalSync() {
         if (JSON.stringify(existing.allegati||[]) !== JSON.stringify(evAllegati)) { existing.allegati = evAllegati; changed = true; }
         if (existing.completato !== evCompletato)  { existing.completato   = evCompletato; changed = true; }
         if (!existing.gcalId) { existing.gcalId = ev.id; changed = true; }
+        if (evSquad && JSON.stringify(existing.squadra||[]) !== JSON.stringify(evSquad)) { existing.squadra = evSquad; changed = true; }
         if (changed) { needsSave = true; imported++; }
         continue;
       }
       appuntamenti.push({
         id: 'gcal_' + ev.id, gcalId: ev.id,
         tecnico: currentTech.id,
+        ...(evSquad ? { squadra: evSquad } : {}),
         data: evDateStr, ora: evTimeStr, ora_fine: evTimeEnd,
         clienteId: evClienteId, clienteNome: evClienteNome,
         tipo_intervento: evTipo, note: evNote,
@@ -4658,7 +4680,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.44'; // fix techCalSync: rimuove appuntamenti stale (cancellati/riassegnati dall'admin)
+const _APP_VERSION = '2.45'; // squadra visibile ai tecnici via [mda_squad:...] in GCal; commessa auto in rapportino; fix rapp_meta numero null
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
