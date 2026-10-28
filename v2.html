@@ -992,7 +992,7 @@ let CLIENTI = JSON.parse(localStorage.getItem('mda_clienti') || JSON.stringify([
   { id: 'M141', codice: 'M 141', nome: "Asilo Via Dezza", indirizzo: "Via Dezza, 20144 Milano (MI)" },
   { id: 'M160', codice: 'M 160', nome: "Parrocchia San Donato", indirizzo: "Via Trento, 6, 20097 San Donato Milanese (MI)" },
   { id: 'M164', codice: 'M 164', nome: "Condominio Mairano", indirizzo: "Via Padre Ladie, Mairano (MI)" },
-  { id: 'M174', codice: 'M 174', nome: "Teddy Group - Via Torino", indirizzo: "Via Torino, 20097 San Donato Milanese (MI)" },
+  { id: 'M174', codice: 'M 174', nome: "Teddy Group - Via Torino", indirizzo: "Via Torino, 29, 20123 Milano" },
   { id: 'M178', codice: 'M 178', nome: "Condominio Residenziale Leonardo", indirizzo: "Via Di Vittorio 1, 20060 Mediglia (MI)" },
   { id: 'M183', codice: 'M 183', nome: "Immobiliare Triveneta", indirizzo: "Piazza SS. Trinità, 20154 Milano (MI)" },
   { id: 'M193', codice: 'M 193', nome: "Roland Berger - Via Gioia 8", indirizzo: "Via Melchiorre Gioia, 8, Milano (MI)" },
@@ -3255,6 +3255,40 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   CARTELLA _meta (sottocartella Drive per JSON sidecar — separati dai PDF)
+═══════════════════════════════════════════════════════════ */
+async function _driveGetMetaFolderId() {
+  const cached = localStorage.getItem('mda_drive_meta_folder');
+  if (cached) return cached;
+  try {
+    // Cerca la sottocartella _meta dentro la cartella rapportini
+    const q = encodeURIComponent(`'${GCAL.DRIVE_FOLDER_ID}' in parents and name='_meta' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const resp = await _swFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {
+      headers: { Authorization: `Bearer ${_driveToken}` }
+    });
+    if (resp.ok) {
+      const { files } = await resp.json();
+      if (files && files.length > 0) {
+        localStorage.setItem('mda_drive_meta_folder', files[0].id);
+        return files[0].id;
+      }
+    }
+    // Crea la sottocartella _meta
+    const create = await _swFetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+      body: new Blob([JSON.stringify({ name: '_meta', mimeType: 'application/vnd.google-apps.folder', parents: [GCAL.DRIVE_FOLDER_ID] })], { type: 'application/json' })
+    });
+    if (create.ok) {
+      const { id } = await create.json();
+      localStorage.setItem('mda_drive_meta_folder', id);
+      return id;
+    }
+  } catch(e) { console.warn('_driveGetMetaFolderId failed:', e); }
+  return GCAL.DRIVE_FOLDER_ID; // fallback alla cartella principale
+}
+
+/* ═══════════════════════════════════════════════════════════
    UPLOAD METADATA RAPPORTINO SU DRIVE (sidecar JSON per sync presenze)
 ═══════════════════════════════════════════════════════════ */
 async function uploadRappMetaDrive(rapp) {
@@ -3263,16 +3297,17 @@ async function uploadRappMetaDrive(rapp) {
   if (!rapp || !rapp.id || rapp.numero === null || rapp.numero === undefined || isNaN(rapp.numero)) {
     console.log('rapp_meta: skip upload, dati incompleti (numero:', rapp?.numero, ')'); return;
   }
+  const metaFolderId = await _driveGetMetaFolderId();
   const filename = 'rapp_meta_' + rapp.id + '.json';
-  // Controlla se esiste già — evita duplicati
+  // Controlla se esiste già in _meta — evita duplicati
   try {
-    const q = encodeURIComponent(`'${GCAL.DRIVE_FOLDER_ID}' in parents and name='${filename}' and trashed=false`);
+    const q = encodeURIComponent(`'${metaFolderId}' in parents and name='${filename}' and trashed=false`);
     const chk = await _swFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {
       headers: { Authorization: `Bearer ${_driveToken}` }
     });
     if (chk.ok) {
       const { files } = await chk.json();
-      if (files && files.length > 0) { console.log('rapp_meta già presente, skip:', filename); return; }
+      if (files && files.length > 0) { console.log('rapp_meta già presente in _meta, skip:', filename); return; }
     }
   } catch(e) { /* se il check fallisce, procedi comunque con l'upload */ }
   const jsonContent = new Blob([JSON.stringify(rapp)], { type: 'application/json' });
@@ -3280,7 +3315,7 @@ async function uploadRappMetaDrive(rapp) {
     const s1 = await _swFetch('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
       headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
-      body: new Blob([JSON.stringify({ name: filename, parents: [GCAL.DRIVE_FOLDER_ID], mimeType: 'application/json' })], { type: 'application/json' })
+      body: new Blob([JSON.stringify({ name: filename, parents: [metaFolderId], mimeType: 'application/json' })], { type: 'application/json' })
     });
     if (!s1.ok) { console.warn('rapp_meta step1 failed', s1.status); return; }
     const { id: fid } = await s1.json();
@@ -3289,7 +3324,7 @@ async function uploadRappMetaDrive(rapp) {
       headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
       body: jsonContent
     });
-    console.log('rapp_meta uploaded:', filename);
+    console.log('rapp_meta uploaded to _meta:', filename);
   } catch (e) { console.warn('rapp_meta upload failed:', e); }
 }
 
@@ -3324,11 +3359,15 @@ async function sincronizzaPresenzeDrive(_retried = false) {
   const btn = document.getElementById('btn-sync-presenze');
   if (btn && !_retried) { btn.disabled = true; btn.textContent = '⏳ Sincronizzazione…'; }
   try {
-    // Lista tutti i file rapp_meta_*.json nella cartella Drive
+    // Lista tutti i file rapp_meta_*.json (cartella principale + sottocartella _meta)
+    const _syncMetaFId = await _driveGetMetaFolderId();
+    const _syncParentQ = (_syncMetaFId && _syncMetaFId !== GCAL.DRIVE_FOLDER_ID)
+      ? `('${GCAL.DRIVE_FOLDER_ID}' in parents or '${_syncMetaFId}' in parents)`
+      : `'${GCAL.DRIVE_FOLDER_ID}' in parents`;
     const metaFiles = [];
     let pageToken = '';
     do {
-      const q = encodeURIComponent(`'${GCAL.DRIVE_FOLDER_ID}' in parents and name contains 'rapp_meta_' and trashed=false`);
+      const q = encodeURIComponent(`${_syncParentQ} and name contains 'rapp_meta_' and trashed=false`);
       const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&pageSize=1000${pageToken ? '&pageToken='+pageToken : ''}`;
       const resp = await _swFetch(url, { headers: { Authorization: `Bearer ${_driveToken}` } });
       if (!resp.ok) {
@@ -4701,7 +4740,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.46'; // squadra visibile anche nel modal dettaglio admin (openApptModal)
+const _APP_VERSION = '2.48'; // rapp_meta JSON spostati in sottocartella _meta (Drive pulito)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
