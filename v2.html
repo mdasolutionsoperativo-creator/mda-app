@@ -3850,14 +3850,30 @@ async function techCalSync() {
       });
       imported++;
     }
-    // Rimuovi appuntamenti stale: gcalId presente in localStorage ma non più in GCal
-    // (= cancellati o riassegnati dall'admin). Consideriamo solo appuntamenti del tecnico
-    // corrente, con gcalId, nella finestra di sync (30gg fa → +120gg).
+    // Rimuovi appuntamenti stale: non più in GCal (cancellati o riassegnati dall'admin).
+    // Due check: 1) gcalId presente ma non in GCal; 2) nessun gcalId ma mda_id non in GCal
+    // (appuntamenti importati via JS che potrebbero non aver mai avuto gcalId impostato).
     const activeGcalIds = new Set((data.items || []).filter(ev => ev.start?.dateTime).map(ev => ev.id));
+    // Costruisce Set degli mda_id attivi dai tag [mda_id:xxx] nelle descrizioni GCal
+    const activeMdaIds = new Set();
+    (data.items || []).filter(ev => ev.start?.dateTime).forEach(ev => {
+      const m = (ev.description || '').match(/\[mda_id:([^\]]+)\]/);
+      if (m) activeMdaIds.add(m[1]);
+    });
     const _winMin = Date.now() - 30*86400000;
     const _winMax = Date.now() + 120*86400000;
     const _inWin  = (a) => { const d = new Date(a.data).getTime(); return d >= _winMin && d <= _winMax; };
-    const _stale  = (a) => a.gcalId && a.tecnico === currentTech.id && _inWin(a) && !activeGcalIds.has(a.gcalId);
+    // Protezione: appuntamenti creati nelle ultime 2 ore potrebbero non essere ancora su GCal
+    const _recentlyCreated = (a) => a.creato && (Date.now() - new Date(a.creato).getTime()) < 2*3600000;
+    const _stale  = (a) => {
+      if (!_inWin(a) || a.tecnico !== currentTech.id) return false;
+      // Check primario: gcalId impostato ma non più in GCal (event cancellato/riassegnato)
+      if (a.gcalId && !activeGcalIds.has(a.gcalId)) return true;
+      // Check secondario: nessun gcalId ma mda_id non trovato in nessun evento GCal attivo
+      // Evita falsi positivi su appuntamenti appena creati o se GCal non ha restituito mda_id
+      if (!a.gcalId && a.id && activeMdaIds.size > 0 && !activeMdaIds.has(a.id) && !_recentlyCreated(a)) return true;
+      return false;
+    };
     const _prevTot = appuntamenti.length + interventoExtra.length;
     appuntamenti    = appuntamenti.filter(a => !_stale(a));
     interventoExtra = interventoExtra.filter(a => !_stale(a));
@@ -4740,7 +4756,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.48'; // rapp_meta JSON spostati in sottocartella _meta (Drive pulito)
+const _APP_VERSION = '2.49'; // fix stale: rimuove appuntamenti spostati/cancellati anche senza gcalId (doppio check mda_id)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
