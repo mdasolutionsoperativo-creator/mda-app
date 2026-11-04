@@ -1137,8 +1137,8 @@ function initMain() {
   document.getElementById('int-ora').value = timeStr;
   document.getElementById('rapp-ora-inizio').value = timeStr;
 
-  // Numero rapportino
-  document.getElementById('rapp-numero').textContent = 'MDA-2026-' + String(rapportinoNum).padStart(4,'0');
+  // Numero rapportino (include iniziali tecnico per evitare collisioni tra tecnici)
+  document.getElementById('rapp-numero').textContent = _fmtRappNum(currentTech?.id, rapportinoNum);
 
   // Admin visibility
   if (currentTech.isAdmin) {
@@ -1252,6 +1252,16 @@ function showTab(tab) {
   if (tab === 'rapportino') {
     // Canvas è 0x0 se la tab non era visibile — ridimensiona dopo che il DOM è visibile
     requestAnimationFrame(() => resizeCanvas());
+    // Quando il tab si apre direttamente (senza apriRapportinoDa), imposta rapp-data
+    // alla data correntemente selezionata nel calendario. Se invece si arriva tramite
+    // apriRapportinoDa(), la chiamata a document.getElementById('rapp-data').value = a.data
+    // che segue immediatamente sovrascrive con la data corretta dell'appuntamento.
+    const rappDataEl = document.getElementById('rapp-data');
+    if (rappDataEl) {
+      rappDataEl.value = selectedDate instanceof Date
+        ? selectedDate.toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+    }
   }
 }
 
@@ -2012,6 +2022,15 @@ function salvaIntervento() {
       // Cattura i compagni di squadra PRIMA di cambiare data/ora (sono la chiave di lookup)
       const squadra = getSquadra(found);
 
+      // Fix stale: se il tecnico cambia, elimina l'evento dal vecchio calendario GCal.
+      // Senza questo, il vecchio tecnico continua a vedere l'appuntamento anche dopo lo spostamento.
+      const _oldTechId = found.tecnico;
+      const _oldGcalId = found.gcalId;
+      if (_oldTechId !== tecnicoId && _oldGcalId && _gcalToken) {
+        gcalDeleteAppt(_oldGcalId, _oldTechId).catch(() => {});
+        delete found.gcalId; // forza creazione nuovo evento nel calendario del nuovo tecnico
+      }
+
       found.tecnico = tecnicoId;
       found.clienteId = clienteId;
       found.data = data;
@@ -2287,6 +2306,18 @@ function selectChip(el, groupId) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   HELPER NUMERO RAPPORTINO
+   Formato: MDA-2026-{INIZIALI TECNICO}-{NNNN}
+   Includere le iniziali evita collisioni tra tecnici diversi al
+   stesso numero di sequenza (ogni tecnico ha il proprio contatore locale).
+═══════════════════════════════════════════════════════════ */
+function _fmtRappNum(techId, num) {
+  const t = Object.values(CONFIG.tecnici).find(x => x.id === techId);
+  const ini = (t?.iniziali || techId?.substring(0,2).toUpperCase() || '??').substring(0,2);
+  return 'MDA-2026-' + ini + '-' + String(num || 0).padStart(4, '0');
+}
+
+/* ═══════════════════════════════════════════════════════════
    GENERA PDF
 ═══════════════════════════════════════════════════════════ */
 async function generaPDF() {
@@ -2494,7 +2525,7 @@ async function generaPDF() {
   // Incrementa numero rapportino
   rapportinoNum++;
   localStorage.setItem('mda_rapp_num', rapportinoNum);
-  document.getElementById('rapp-numero').textContent = 'MDA-2026-' + String(rapportinoNum).padStart(4,'0');
+  document.getElementById('rapp-numero').textContent = _fmtRappNum(currentTech?.id, rapportinoNum);
 
   // Mostra bottone email se c'è un indirizzo
   const emailEl = document.getElementById('rapp-email');
@@ -3933,7 +3964,7 @@ function esportaOreExcel() {
     const cliente = CLIENTI.find(c => c.id === r.cliente);
     const tecnico = Object.values(CONFIG.tecnici).find(t => t.id === r.tecnico);
     detData.push([
-      'MDA-2026-' + String(r.numero || 0).padStart(4, '0'),
+      _fmtRappNum(r.tecnico, r.numero),
       r.data || '',
       tecnico?.nome || r.tecnico || '',
       cliente?.nome || r.cliente || '',
@@ -4179,7 +4210,7 @@ function generaReportSENED() {
     const _dc = CLIENTI.find(c => c.id === r.cliente);
     const _dt = Object.values(CONFIG.tecnici).find(t => t.id === r.tecnico);
     detData.push([
-      'MDA-2026-' + String(r.numero || 0).padStart(4, '0'),
+      _fmtRappNum(r.tecnico, r.numero),
       r.data || '',
       _dt?.nome || r.tecnico || '',
       _dc?.nome || r.cliente || '',
@@ -4618,9 +4649,23 @@ function applyApptMove(apptId, newTechId, newOra, newOraFine) {
   const inExtra = !!found;
   if (!found) found = appuntamenti.find(a => a.id === apptId);
   if (!found) return;
+
+  // Salva i valori PRIMA di cambiare (necessario per eliminare dal vecchio calendario)
+  const oldTechId = found.tecnico;
+  const oldGcalId = found.gcalId;
+
   found.tecnico  = newTechId;
   found.ora      = newOra;
   found.ora_fine = newOraFine;
+
+  // Se il tecnico è cambiato: elimina l'evento dal calendario del vecchio tecnico e
+  // cancella gcalId così gcalPushAppt crea un NUOVO evento nel calendario corretto.
+  // Senza questo, il vecchio tecnico continua a vedere l'appuntamento in GCal.
+  if (oldTechId !== newTechId && oldGcalId) {
+    gcalDeleteAppt(oldGcalId, oldTechId).catch(() => {});
+    delete found.gcalId;
+  }
+
   if (inExtra) saveExtra(); else saveAppuntamenti();
   gcalPushAppt(found);
   renderAgendaList();
@@ -4756,7 +4801,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.49'; // fix stale: rimuove appuntamenti spostati/cancellati anche senza gcalId (doppio check mda_id)
+const _APP_VERSION = '2.50'; // fix: elimina evento GCal dal vecchio tecnico al riassegno; numero rapportino per-tecnico (iniziali); data rapportino = selectedDate
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
