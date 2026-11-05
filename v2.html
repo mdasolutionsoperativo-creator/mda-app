@@ -534,6 +534,11 @@
         <p style="font-size:12px;color:var(--sub);margin-bottom:10px">Scarica i dati dei rapportini caricati dai tecnici su Drive e li aggiunge al database locale. Poi genera il report presenze o il riepilogo ore. <strong>Prima di usarlo chiedi ai tecnici di premere "Carica i miei dati su Drive" nel loro pannello.</strong></p>
         <button id="btn-sync-presenze" class="btn-sm primary" onclick="sincronizzaPresenzeDrive()" style="font-size:13px;padding:9px 16px">🔄 Sincronizza da Drive</button>
       </div>
+      <div class="card" style="padding:14px;margin-bottom:10px;border-left:3px solid #f59e0b">
+        <p style="font-size:14px;font-weight:700;margin-bottom:4px">🧹 Pulizia archivio rapportini</p>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:10px">Rimuove i record duplicati dall'archivio locale. Utile se il conteggio ore risulta gonfiato da record fantasma (numero 0000 duplicati). Esegui dopo la sincronizzazione da Drive.</p>
+        <button class="btn-sm" onclick="_pulisciDuplicatiArchivio()" style="font-size:13px;padding:9px 16px;background:#f59e0b;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600">🧹 Pulisci duplicati</button>
+      </div>
       <div class="card" style="padding:14px;margin-bottom:10px">
         <p style="font-size:13px;color:var(--sub);margin-bottom:12px">Riepilogo sintetico ore per cliente e tipo intervento.</p>
         <button class="btn-sm primary" onclick="esportaOreExcel()" style="font-size:13px;padding:9px 16px">📊 Riepilogo ore (Excel)</button>
@@ -1077,7 +1082,7 @@ let pinBuffer = '';
 let signaturePad = null;
 let _firmaBloccata = null; // data URL della firma bloccata
 let selectedDate = new Date();
-let rapportinoNum = parseInt(localStorage.getItem('mda_rapp_num') || '1');
+let rapportinoNum = Math.max(1, parseInt(localStorage.getItem('mda_rapp_num') || '1') || 1);
 
 // Dati locali
 let appuntamenti = JSON.parse(localStorage.getItem('mda_appuntamenti') || '[]');
@@ -3612,6 +3617,60 @@ async function _driveGetMetaFolderId() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   DEDUPLICAZIONE ARCHIVIO RAPPORTINI
+   Rimuove record duplicati da mda_rapportini.
+   Prima dedup per ID esatto, poi per chiave composta
+   (tecnico + data + cliente + ore + tipo + numero).
+   In caso di duplicati, mantiene il record con driveUrl se disponibile,
+   altrimenti il più recente (creato più tardi).
+═══════════════════════════════════════════════════════════ */
+function _deduplicaArchivio(archivio) {
+  if (!Array.isArray(archivio)) return [];
+  // Fase 1: dedup per ID esatto
+  const byId = new Map();
+  for (const r of archivio) {
+    if (!r?.id) continue;
+    const existing = byId.get(r.id);
+    if (!existing) { byId.set(r.id, r); continue; }
+    // Preferisci il record con driveUrl, altrimenti il più recente
+    if (!existing.driveUrl && r.driveUrl) byId.set(r.id, r);
+    else if (!existing.driveUrl && !r.driveUrl && (r.creato || '') > (existing.creato || '')) byId.set(r.id, r);
+  }
+  const records = Array.from(byId.values());
+  // Fase 2: dedup per chiave contenuto (stesso tecnico+data+cliente+ore+tipo+numero)
+  // Gestisce il caso di record distinti (ID diversi) con dati identici
+  const byKey = new Map();
+  for (const r of records) {
+    // Normalizza ore a 2 decimali per evitare falsi negativi floating point
+    const oreNorm = parseFloat((r.ore || 0).toFixed(2));
+    const key = [r.tecnico || '', r.data || '', r.cliente || '', oreNorm, r.tipo || '', r.numero ?? ''].join('|');
+    const existing = byKey.get(key);
+    if (!existing) { byKey.set(key, r); continue; }
+    // Preferisci: 1) ha driveUrl, 2) creato più recente
+    if (!existing.driveUrl && r.driveUrl) byKey.set(key, r);
+    else if (!existing.driveUrl && !r.driveUrl && (r.creato || '') > (existing.creato || '')) byKey.set(key, r);
+  }
+  return Array.from(byKey.values());
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PULIZIA DUPLICATI ARCHIVIO (admin)
+═══════════════════════════════════════════════════════════ */
+function _pulisciDuplicatiArchivio() {
+  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  const prima = archivio.length;
+  if (prima === 0) { toast('Archivio rapportini vuoto'); return; }
+  const pulito = _deduplicaArchivio(archivio);
+  const rimossi = prima - pulito.length;
+  if (rimossi === 0) {
+    toast('✅ Archivio già pulito — nessun duplicato trovato (' + prima + ' rapportini)');
+    return;
+  }
+  localStorage.setItem('mda_rapportini', JSON.stringify(pulito));
+  toast('🧹 Rimossi ' + rimossi + ' duplicati (' + prima + ' → ' + pulito.length + ' rapportini in archivio)');
+}
+
+/* ═══════════════════════════════════════════════════════════
    UPLOAD METADATA RAPPORTINO SU DRIVE (sidecar JSON per sync presenze)
 ═══════════════════════════════════════════════════════════ */
 async function uploadRappMetaDrive(rapp) {
@@ -3736,10 +3795,14 @@ async function sincronizzaPresenzeDrive(_retried = false) {
         }
       } catch(e) { console.warn('Errore lettura', f.name, e); }
     }
-    localStorage.setItem('mda_rapportini', JSON.stringify(archivio));
+    // Deduplication post-sync: rimuovi eventuali record fantasma con stesso contenuto ma ID diversi
+    const archivioDedup = _deduplicaArchivio(archivio);
+    const rimossiDedup = archivio.length - archivioDedup.length;
+    localStorage.setItem('mda_rapportini', JSON.stringify(archivioDedup));
+    const totMsg = rimossiDedup > 0 ? ` · 🧹 ${rimossiDedup} duplicati rimossi` : '';
     toast(nuovi > 0
-      ? `✅ Sincronizzazione OK: ${nuovi} nuovi rapportini (${archivio.length} totali in archivio)`
-      : `✅ Già aggiornato — nessun nuovo rapportino (${archivio.length} in archivio)`);
+      ? `✅ Sincronizzazione OK: ${nuovi} nuovi rapportini (${archivioDedup.length} totali)${totMsg}`
+      : `✅ Già aggiornato — nessun nuovo rapportino (${archivioDedup.length} in archivio)${totMsg}`);
   } catch(e) {
     toast(`⚠️ Errore: ${e?.message || 'errore di rete'}`);
   } finally {
@@ -4220,7 +4283,7 @@ async function techCalSync() {
    ESPORTA ORE IN EXCEL
 ═══════════════════════════════════════════════════════════ */
 function esportaOreExcel() {
-  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  const archivio = _deduplicaArchivio(JSON.parse(localStorage.getItem('mda_rapportini') || '[]'));
   if (archivio.length === 0) { toast('Nessun rapportino trovato nell\'archivio'); return; }
 
   // ── Foglio 1: Riepilogo per cliente × tipo ──────────────
@@ -4285,7 +4348,7 @@ function generaReportSENED() {
   const mese = parseInt(document.getElementById('sened-mese').value) || (new Date().getMonth() + 1);
   if (!window.XLSX) { toast('Libreria Excel non caricata'); return; }
 
-  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  const archivio = _deduplicaArchivio(JSON.parse(localStorage.getItem('mda_rapportini') || '[]'));
   const MESI_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
                    'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
   const meseNome = MESI_IT[mese - 1];
@@ -5093,7 +5156,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.52'; // nuova funzionalità: allegati foto/file nel rapportino per tutti i tecnici
+const _APP_VERSION = '2.53'; // fix: deduplicazione rapportini (record fantasma numero 0000 gonfiavano le ore)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
