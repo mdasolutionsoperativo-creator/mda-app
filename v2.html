@@ -886,6 +886,17 @@
          onclick="if(!_driveToken&&_driveTokenClient)driveConnect()">
     </div>
 
+    <!-- Allegati rapportino — foto/file scattati durante l'intervento, visibili a tutti i tecnici -->
+    <div id="rapp-allegati-section" style="display:none;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px">📎 Foto / allegati intervento</div>
+      <div id="rapp-allegati-list"></div>
+      <label id="lbl-rapp-allegato" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f1f5f9;border:1.5px dashed #cbd5e1;border-radius:10px;font-size:13px;color:#64748b">
+        <span style="font-size:18px">📷</span>
+        <span>Aggiungi foto o file</span>
+        <input type="file" accept="image/*,application/pdf,video/*" multiple style="display:none" onchange="uploadRappAllegatoDrive(this)">
+      </label>
+    </div>
+
     <button class="btn btn-primary" onclick="generaPDF()" style="margin-bottom:12px">📄 Genera e Scarica PDF</button>
     <button class="btn btn-green" onclick="inviaPDF()" id="btn-invia-email" style="display:none">✉️ Invia via Email</button>
     <div style="height:20px"></div>
@@ -1255,6 +1266,8 @@ function showTab(tab) {
   if (tab === 'rapportino') {
     // Canvas è 0x0 se la tab non era visibile — ridimensiona dopo che il DOM è visibile
     requestAnimationFrame(() => resizeCanvas());
+    // Aggiorna sezione allegati (mostra/nasconde in base allo stato Drive)
+    renderRappAllegati();
     // Quando il tab si apre direttamente (senza apriRapportinoDa), imposta rapp-data
     // alla data correntemente selezionata nel calendario. Se invece si arriva tramite
     // apriRapportinoDa(), la chiamata a document.getElementById('rapp-data').value = a.data
@@ -2556,13 +2569,18 @@ async function generaPDF() {
     data,
     ore: oreNum,
     tipo: tipoEl ? tipoEl.dataset.val : '-',
-    creato: new Date().toISOString()
+    creato: new Date().toISOString(),
+    allegati: _rappAllegatiPending.length ? [..._rappAllegatiPending] : undefined
   };
   const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
   archivio.push(rapp);
   localStorage.setItem('mda_rapportini', JSON.stringify(archivio));
   // Carica automaticamente il JSON di metadata su Drive (per sync presenze admin)
   if (GCAL.DRIVE_FOLDER_ID && _driveToken) uploadRappMetaDrive(rapp);
+
+  // Reset allegati pending dopo il salvataggio
+  _rappAllegatiPending = [];
+  renderRappAllegati();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2612,6 +2630,7 @@ const _GCAL_API = 'https://www.googleapis.com/calendar/v3/calendars';
 
 // ── Drive ─────────────────────────────────────────────────
 let _driveTokenClient = null, _driveToken = null, _pendingRappDriveUpload = null;
+let _rappAllegatiPending = []; // allegati rapportino corrente (pending prima del salvataggio PDF)
 let _openApptModalId = null; // tiene traccia del modal aperto per aggiornarlo dopo Drive connect
 
 function gapiLoaded() {
@@ -2965,6 +2984,7 @@ function driveUpdateUI(connected) {
     if (btnD) btnD.style.display = 'none';
   }
   _driveShowPendingBadge(); // aggiorna badge pending + rapp-drive-status
+  renderRappAllegati();    // mostra/nasconde sezione allegati rapportino
 }
 
 /* ── Config cartelle Drive (admin) ───────────────────────── */
@@ -3430,6 +3450,130 @@ async function drivePendingRetry() {
     toast('✅ Tutti i rapportini in sospeso caricati!');
   } else {
     toast(`⚠️ Ancora ${remaining} rapportino${remaining > 1 ? 'i' : ''} non caricato${remaining > 1 ? 'i' : ''} — riprova più tardi`);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ALLEGATI RAPPORTINO — foto e file durante l'intervento
+   Disponibili a TUTTI i tecnici (non solo admin) quando Drive è connesso.
+   I file vengono caricati su Drive (_driveAttachFolderId || DRIVE_FOLDER_ID)
+   e tenuti in _rappAllegatiPending fino alla generazione del PDF.
+═══════════════════════════════════════════════════════════ */
+
+/** Mostra/nasconde la sezione allegati nel tab Rapportino e aggiorna la lista. */
+function renderRappAllegati() {
+  const section = document.getElementById('rapp-allegati-section');
+  if (!section) return;
+  // Visibile a tutti i tecnici quando Drive è connesso e la cartella è configurata
+  const folderId = _driveAttachFolderId() || GCAL.DRIVE_FOLDER_ID;
+  if (!_driveToken || !folderId) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+  // Aggiorna la lista degli allegati già caricati
+  const listEl = document.getElementById('rapp-allegati-list');
+  if (!listEl) return;
+  if (!_rappAllegatiPending.length) {
+    listEl.innerHTML = '';
+    return;
+  }
+  listEl.innerHTML = _rappAllegatiPending.map((al, idx) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#f8fafc;border-radius:8px;margin-bottom:6px;border:1px solid #e2e8f0">
+      <span style="font-size:16px">${al.nome.match(/\.(pdf)$/i) ? '📄' : al.nome.match(/\.(mp4|mov|avi|webm|3gp)$/i) ? '🎥' : '🖼'}</span>
+      <a href="${al.url}" target="_blank" style="flex:1;font-size:13px;color:#6366f1;text-decoration:none;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${al.nome}</a>
+      <button onclick="_rappRimuoviAllegato(${idx})" style="border:none;background:none;cursor:pointer;color:#ef4444;font-size:16px;padding:0 2px;line-height:1" title="Rimuovi">×</button>
+    </div>`).join('');
+}
+
+/** Rimuove un allegato pending per indice. */
+function _rappRimuoviAllegato(idx) {
+  _rappAllegatiPending.splice(idx, 1);
+  renderRappAllegati();
+}
+
+/** Upload di foto/file al rapportino — carica su Drive e aggiunge alla lista pending. */
+async function uploadRappAllegatoDrive(inputEl) {
+  const files = Array.from(inputEl.files || []);
+  if (!files.length) return;
+  if (!_driveToken) { toast('⚠️ Connetti Google Drive per allegare file'); return; }
+  const folderId = _driveAttachFolderId() || GCAL.DRIVE_FOLDER_ID;
+  if (!folderId) { toast('⚠️ Cartella Drive non configurata'); return; }
+
+  // Reset input così lo stesso file può essere riselezionato
+  inputEl.value = '';
+
+  const lbl = document.getElementById('lbl-rapp-allegato');
+  if (lbl) { lbl.style.opacity = '0.5'; lbl.style.pointerEvents = 'none'; }
+
+  // Prefisso filename dal form corrente
+  const data = document.getElementById('rapp-data')?.value || new Date().toISOString().split('T')[0];
+  const clienteSel = document.getElementById('rapp-cliente');
+  const clienteNome = clienteSel?.options[clienteSel.selectedIndex]?.text || 'intervento';
+  const clienteShort = clienteNome.replace(/[^a-zA-Z0-9\s]/g, '').trim().split(/\s+/).slice(0, 2).join('_').substring(0, 20) || 'intv';
+
+  let caricati = 0;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'jpg';
+    const idx = _rappAllegatiPending.length + i + 1;
+    const filename = `${data}_${clienteShort}_foto${idx}.${ext}`;
+    toast(`⏳ Caricamento ${i + 1}/${files.length}: ${file.name}…`);
+
+    let _step = 'step1';
+    try {
+      // Step 1 — crea il record metadati
+      const metaResp = await _swFetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+        body: new Blob([JSON.stringify({ name: filename, parents: [folderId], mimeType: file.type || 'application/octet-stream' })], { type: 'application/json' })
+      });
+      if (!metaResp.ok) {
+        const err = await metaResp.json().catch(() => ({}));
+        console.error('Drive allegato-rapp create error', metaResp.status, err);
+        if (metaResp.status === 401) _driveTokenInvalid('⚠️ Sessione Drive scaduta — riconnetti');
+        else if (metaResp.status === 403) { _driveTokenInvalid(null); toast('⚠️ Drive: permessi insufficienti — vai in Impostazioni e riconnetti'); }
+        else toast(`⚠️ Upload ${file.name} fallito (${metaResp.status})`);
+        continue;
+      }
+      const created = await metaResp.json();
+      const fileId = created.id;
+
+      // Step 2 — carica il contenuto binario
+      _step = 'step2';
+      const uploadResp = await _swFetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,webViewLink`,
+        { method: 'PATCH', headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': file.type || 'application/octet-stream' }, body: file }
+      );
+      if (!uploadResp.ok) {
+        console.error('Drive allegato-rapp upload error', uploadResp.status);
+        _swFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${_driveToken}` } }).catch(() => {});
+        toast(`⚠️ Upload ${file.name} fallito (${uploadResp.status})`);
+        continue;
+      }
+      const driveFile = await uploadResp.json();
+
+      // Rendi pubblico con link (come per gli allegati admin)
+      await _swFetch(`https://www.googleapis.com/drive/v3/files/${driveFile.id}/permissions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+        body: new Blob([JSON.stringify({ role: 'reader', type: 'anyone' })], { type: 'application/json' })
+      }).catch(() => {});
+
+      _rappAllegatiPending.push({ id: driveFile.id, nome: file.name, url: driveFile.webViewLink });
+      caricati++;
+    } catch (e) {
+      console.error(`Drive allegato-rapp exception [${_step}]`, e);
+      toast(`⚠️ Errore upload ${file.name} — ${e?.message || 'errore di rete'}`);
+    }
+  }
+
+  if (lbl) { lbl.style.opacity = '1'; lbl.style.pointerEvents = ''; }
+  if (caricati > 0) {
+    toast(caricati === files.length
+      ? `📎 ${caricati} allegato${caricati > 1 ? 'i' : ''} aggiunto${caricati > 1 ? 'i' : ''}!`
+      : `📎 ${caricati}/${files.length} allegati caricati`);
+    renderRappAllegati();
   }
 }
 
@@ -4949,7 +5093,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.51'; // fix: verifica size upload Drive, retry 3x, coda persistente per rapportini non caricati
+const _APP_VERSION = '2.52'; // nuova funzionalità: allegati foto/file nel rapportino per tutti i tecnici
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
