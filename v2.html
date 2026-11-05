@@ -393,7 +393,10 @@
       display:flex;align-items:center;gap:11px">
       <span style="font-size:22px;flex-shrink:0">☁️</span>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:700;font-size:13px">Google Drive</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-weight:700;font-size:13px">Google Drive</span>
+          <span id="drive-pending-badge" style="display:none;background:#ef4444;color:#fff;font-size:10px;font-weight:800;padding:1px 6px;border-radius:10px;line-height:1.5"></span>
+        </div>
         <div id="drive-banner-label" style="font-size:11px;opacity:.85;line-height:1.3">
           Non connesso — rapportini salvati solo su questo dispositivo
         </div>
@@ -2961,7 +2964,7 @@ function driveUpdateUI(connected) {
     if (btnC) btnC.style.display = '';
     if (btnD) btnD.style.display = 'none';
   }
-  updateRappDriveStatus();
+  _driveShowPendingBadge(); // aggiorna badge pending + rapp-drive-status
 }
 
 /* ── Config cartelle Drive (admin) ───────────────────────── */
@@ -3004,15 +3007,42 @@ function updateRappDriveStatus() {
   if (!el) return;
   if (!GCAL.DRIVE_FOLDER_ID) { el.style.display = 'none'; return; }
   el.style.display = 'flex';
+  el.onclick = null; // reset handler
+  const pending = _drivePendingCount();
   if (_driveToken) {
-    el.style.background = '#d1fae5';
-    el.style.color = '#065f46';
-    el.style.border = '1.5px solid #6ee7b7';
-    el.innerHTML = '<span style="font-size:18px">✅</span><span>Drive connesso — il PDF verrà caricato automaticamente</span>';
+    if (pending > 0) {
+      // Drive connesso MA ci sono rapportini non caricati → warning con bottone retry
+      el.style.background = '#fffbeb';
+      el.style.color = '#78350f';
+      el.style.border = '1.5px solid #fcd34d';
+      el.style.flexDirection = 'column';
+      el.style.alignItems = 'stretch';
+      el.style.cursor = 'default';
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:18px">⚠️</span>
+          <span><strong>${pending} rapportino${pending>1?'i':''} in sospeso</strong> — upload non riuscito</span>
+        </div>
+        <button onclick="drivePendingRetry()" style="width:100%;background:#f59e0b;color:#fff;border:none;padding:9px 12px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          ☁️ Riprova upload ora
+        </button>`;
+    } else {
+      el.style.background = '#d1fae5';
+      el.style.color = '#065f46';
+      el.style.border = '1.5px solid #6ee7b7';
+      el.style.flexDirection = '';
+      el.style.alignItems = '';
+      el.style.cursor = '';
+      el.innerHTML = '<span style="font-size:18px">✅</span><span>Drive connesso — il PDF verrà caricato automaticamente</span>';
+    }
   } else {
     el.style.background = '#fef3c7';
     el.style.color = '#92400e';
     el.style.border = '1.5px solid #fcd34d';
+    el.style.flexDirection = '';
+    el.style.alignItems = '';
+    el.style.cursor = 'pointer';
+    el.onclick = () => { if (!_driveToken && _driveTokenClient) driveConnect(); };
     el.innerHTML = '<span style="font-size:18px">⚠️</span><span><strong>Drive non connesso</strong> — tocca qui per connetterti prima di generare il PDF</span>';
   }
 }
@@ -3246,20 +3276,50 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
     const created = await metaResp.json();
     const fileId = created.id;
 
-    // ── STEP 2: carica il contenuto PDF ──────────────────────────────
+    // ── STEP 2: carica il contenuto PDF (con verifica size + retry) ──────
     _uploadStep = 'step2';
-    const uploadResp = await _swFetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,webViewLink`,
-      {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/pdf' },
-        body: pdfBlob
-      }
-    );
+    let file = null;
+    let uploadOk = false;
 
-    if (uploadResp.ok) {
-      const file = await uploadResp.json();
-      console.log('Drive upload OK:', file.webViewLink);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (attempt > 1) {
+        // Backoff: 1.5s al 2° tentativo, 3s al 3°
+        await new Promise(r => setTimeout(r, attempt === 2 ? 1500 : 3000));
+        toast(`⏳ Ritento upload Drive (${attempt}/3)…`);
+      }
+      try {
+        // Richiedi anche "size" per verificare che il PDF sia stato davvero caricato
+        const uploadResp = await _swFetch(
+          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&fields=id,name,webViewLink,size`,
+          {
+            method: 'PATCH',
+            headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/pdf' },
+            body: pdfBlob   // lo stesso Blob è riutilizzabile: arrayBuffer() lo legge, non lo consuma
+          }
+        );
+        if (uploadResp.ok) {
+          file = await uploadResp.json();
+          const uploadedSize = parseInt(file.size || '0');
+          if (uploadedSize > 500) {
+            // File presente e ha dimensione ragionevole → upload OK
+            uploadOk = true;
+            break;
+          }
+          // Drive ha risposto 200 ma il file risulta vuoto (size=0 o mancante)
+          console.warn(`Drive upload: file troppo piccolo (size=${uploadedSize}) al tentativo ${attempt}`);
+        } else {
+          const err2 = await uploadResp.json().catch(() => ({}));
+          console.error(`Drive upload error ${uploadResp.status} al tentativo ${attempt}`, err2);
+        }
+      } catch (stepErr) {
+        console.error(`Drive upload exception al tentativo ${attempt}:`, stepErr);
+        // Se siamo all'ultimo tentativo, usciamo e gestiamo sotto
+        if (attempt >= 3) break;
+      }
+    }
+
+    if (uploadOk && file) {
+      console.log('Drive upload OK:', file.webViewLink, 'size:', file.size);
       toast('☁️ Rapportino caricato su Drive!');
       // Aggiorna il link nell'archivio locale
       const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
@@ -3268,20 +3328,108 @@ async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
         archivio[archivio.length - 1].driveId  = file.id;
         localStorage.setItem('mda_rapportini', JSON.stringify(archivio));
       }
+      // Rimuovi dalla coda in sospeso se c'era (upload riuscito dopo retry)
+      _drivePendingRemove(filename);
+      _driveShowPendingBadge();
     } else {
-      const err2 = await uploadResp.json().catch(() => ({}));
-      console.error('Drive upload content error', uploadResp.status, err2);
-      // Il file stub è stato creato ma il contenuto non è stato caricato — prova a cancellarlo
+      // Tutti i tentativi falliti — elimina il file stub vuoto da Drive
       _swFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${_driveToken}` }
       }).catch(() => {});
-      toast(`⚠️ Upload Drive fallito (${uploadResp.status}) — rapportino salvato solo localmente`);
+      // Salva in coda persistente per retry futuro
+      _drivePendingAdd(filename, pdfBlob).then(_driveShowPendingBadge);
+      toast('⚠️ Upload fallito (file vuoto su Drive) — rapportino in coda. Riprova dal tab Rapportino.');
     }
 
   } catch (e) {
     console.error(`Drive upload exception [${_uploadStep}]`, e);
-    // Mostra step e messaggio per diagnostica (es. "Load failed" su iOS = WKWebView error)
-    toast(`⚠️ Upload Drive fallito [${_uploadStep}] — ${e?.message || 'errore di rete'}`);
+    if (_uploadStep === 'step2') {
+      // Step2 fallito con eccezione → salva in coda
+      _drivePendingAdd(filename, pdfBlob).then(_driveShowPendingBadge);
+      toast(`⚠️ Upload Drive fallito — rapportino in coda`);
+    } else {
+      toast(`⚠️ Upload Drive fallito [${_uploadStep}] — ${e?.message || 'errore di rete'}`);
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CODA UPLOAD IN SOSPESO — rapportini non caricati su Drive
+   Salva il PDF come data URL in localStorage. Limite ~10 file
+   (ogni PDF ~2.4MB base64, quota localStorage tipica ~5-10MB).
+═══════════════════════════════════════════════════════════ */
+const _DRIVE_PENDING_KEY = 'mda_drive_pending';
+
+/** Salva un rapportino in coda come base64. Se già presente (stesso filename) lo sovrascrive. */
+async function _drivePendingAdd(filename, pdfBlob) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const pending = JSON.parse(localStorage.getItem(_DRIVE_PENDING_KEY) || '[]');
+        const existing = pending.findIndex(p => p.filename === filename);
+        const entry = { filename, data: reader.result, ts: Date.now() };
+        if (existing >= 0) pending[existing] = entry;
+        else pending.push(entry);
+        // Mantieni al massimo 10 rapportini in coda per evitare overflow localStorage
+        if (pending.length > 10) pending.splice(0, pending.length - 10);
+        localStorage.setItem(_DRIVE_PENDING_KEY, JSON.stringify(pending));
+      } catch(e) { console.error('_drivePendingAdd storage error', e); }
+      resolve();
+    };
+    reader.onerror = () => resolve();
+    reader.readAsDataURL(pdfBlob);
+  });
+}
+
+/** Rimuove un rapportino dalla coda (upload riuscito). */
+function _drivePendingRemove(filename) {
+  try {
+    const p = JSON.parse(localStorage.getItem(_DRIVE_PENDING_KEY) || '[]');
+    localStorage.setItem(_DRIVE_PENDING_KEY, JSON.stringify(p.filter(x => x.filename !== filename)));
+  } catch(e) {}
+}
+
+/** Restituisce il numero di rapportini in coda. */
+function _drivePendingCount() {
+  try { return JSON.parse(localStorage.getItem(_DRIVE_PENDING_KEY) || '[]').length; }
+  catch(e) { return 0; }
+}
+
+/** Aggiorna tutti gli elementi UI che mostrano il contatore dei pending. */
+function _driveShowPendingBadge() {
+  updateRappDriveStatus(); // aggiorna il badge nel tab Rapportino
+  // Aggiorna anche il badge nel drive-banner header
+  const badge = document.getElementById('drive-pending-badge');
+  const n = _drivePendingCount();
+  if (badge) { badge.textContent = n > 0 ? String(n) : ''; badge.style.display = n > 0 ? 'inline-flex' : 'none'; }
+}
+
+/** Riprova l'upload di tutti i rapportini in coda. Chiamata dal pulsante nel tab Rapportino. */
+async function drivePendingRetry() {
+  const pending = JSON.parse(localStorage.getItem(_DRIVE_PENDING_KEY) || '[]');
+  if (!pending.length) { toast('Nessun rapportino in sospeso'); return; }
+  if (!_driveToken) { toast('⚠️ Connetti Drive prima di riprovare'); return; }
+
+  toast(`⏳ Riprovo ${pending.length} upload in sospeso…`);
+
+  for (const item of pending) {
+    try {
+      // Riconverti base64 → Blob tramite fetch su data URL (nativo, non passa per SW)
+      const dataResp = await fetch(item.data);
+      const blob = await dataResp.blob();
+      await uploadRapportinoDrive(blob, item.filename);
+    } catch(e) {
+      console.error('Retry fallito per', item.filename, e);
+    }
+  }
+
+  _driveShowPendingBadge();
+  const remaining = _drivePendingCount();
+  if (remaining === 0) {
+    toast('✅ Tutti i rapportini in sospeso caricati!');
+  } else {
+    toast(`⚠️ Ancora ${remaining} rapportino${remaining > 1 ? 'i' : ''} non caricato${remaining > 1 ? 'i' : ''} — riprova più tardi`);
   }
 }
 
@@ -4801,7 +4949,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.50'; // fix: elimina evento GCal dal vecchio tecnico al riassegno; numero rapportino per-tecnico (iniziali); data rapportino = selectedDate
+const _APP_VERSION = '2.51'; // fix: verifica size upload Drive, retry 3x, coda persistente per rapportini non caricati
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
