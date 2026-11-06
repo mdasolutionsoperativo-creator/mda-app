@@ -27,7 +27,7 @@ self.addEventListener('fetch', e => {
   // Same-origin: html sempre dalla rete, static cache-first
   const p = url.pathname;
   if (p === '/mda-app/' || p.endsWith('.html')) {
-    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    e.respondWith(fetch(e.request, { cache: 'no-cache' }).catch(() => caches.match(e.request)));
     return;
   }
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
