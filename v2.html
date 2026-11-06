@@ -846,9 +846,47 @@
         <textarea class="form-control" id="rapp-lavori" rows="4" placeholder="Descrivi i lavori eseguiti..."></textarea>
       </div>
       <div class="form-group">
-        <label class="form-label">Materiali utilizzati</label>
-        <textarea class="form-control" id="rapp-materiali" rows="2" placeholder="Elenco materiali..."></textarea>
+        <label class="form-label" style="display:flex;align-items:center;gap:7px">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#1e40af;color:#fff;font-size:11px;font-weight:700;flex-shrink:0">3</span>
+          Materiali utilizzati
+        </label>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+          <label id="rapp-mat-lbl-nessuno" style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;transition:all .15s">
+            <input type="radio" name="rapp-mat-tipo" value="nessuno" checked onchange="toggleMateriali(this)">
+            <span>Nessun materiale utilizzato</span>
+          </label>
+          <label id="rapp-mat-lbl-usati" style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;transition:all .15s">
+            <input type="radio" name="rapp-mat-tipo" value="usati" onchange="toggleMateriali(this)">
+            <span>Materiali utilizzati</span>
+          </label>
+        </div>
+        <div id="rapp-materiali-container" style="display:none">
+          <textarea class="form-control" id="rapp-materiali" rows="3" placeholder="Descrivi i materiali utilizzati (es: Filtro aria G4 — 2 pz, Olio lubrificante — 1 lt)..."></textarea>
+        </div>
       </div>
+
+      <div class="form-group">
+        <label class="form-label" style="display:flex;align-items:center;gap:7px">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#1e40af;color:#fff;font-size:11px;font-weight:700;flex-shrink:0">4</span>
+          Stato impianto a fine intervento
+          <span style="color:#ef4444;font-size:13px">*</span>
+        </label>
+        <div id="rapp-stato-container" style="display:flex;flex-direction:column;gap:6px">
+          <label id="rapp-stato-lbl-1" style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;transition:all .15s">
+            <input type="radio" name="rapp-stato-impianto" value="Funzionante" onchange="aggiornaStatoStyle()">
+            <span>✅ Funzionante</span>
+          </label>
+          <label id="rapp-stato-lbl-2" style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;transition:all .15s">
+            <input type="radio" name="rapp-stato-impianto" value="Funzionante con riserva" onchange="aggiornaStatoStyle()">
+            <span>⚠️ Funzionante con riserva (vedi anomalie)</span>
+          </label>
+          <label id="rapp-stato-lbl-3" style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;transition:all .15s">
+            <input type="radio" name="rapp-stato-impianto" value="Fermo / non funzionante" onchange="aggiornaStatoStyle()">
+            <span>🔴 Fermo / non funzionante</span>
+          </label>
+        </div>
+      </div>
+
       <div class="form-group">
         <label class="form-label">Prossima manutenzione prevista</label>
         <input type="text" class="form-control" id="rapp-prossima" placeholder="es. 6 mesi / Gennaio 2027">
@@ -2341,6 +2379,38 @@ function _fmtRappNum(techId, num) {
 /* ═══════════════════════════════════════════════════════════
    GENERA PDF
 ═══════════════════════════════════════════════════════════ */
+function toggleMateriali(el) {
+  const container = document.getElementById('rapp-materiali-container');
+  const lblNessuno = document.getElementById('rapp-mat-lbl-nessuno');
+  const lblUsati   = document.getElementById('rapp-mat-lbl-usati');
+  if (el.value === 'usati') {
+    container.style.display = 'block';
+    lblUsati.style.borderColor = '#1e40af'; lblUsati.style.background = '#eff6ff';
+    lblNessuno.style.borderColor = '#e2e8f0'; lblNessuno.style.background = '';
+    document.getElementById('rapp-materiali').focus();
+  } else {
+    container.style.display = 'none';
+    document.getElementById('rapp-materiali').value = '';
+    lblNessuno.style.borderColor = '#1e40af'; lblNessuno.style.background = '#eff6ff';
+    lblUsati.style.borderColor = '#e2e8f0'; lblUsati.style.background = '';
+  }
+}
+
+function aggiornaStatoStyle() {
+  const sel = document.querySelector('input[name="rapp-stato-impianto"]:checked');
+  const colMap = { 'Funzionante': '#10b981', 'Funzionante con riserva': '#f59e0b', 'Fermo / non funzionante': '#ef4444' };
+  [1,2,3].forEach(i => {
+    const lbl = document.getElementById('rapp-stato-lbl-' + i);
+    const inp = lbl.querySelector('input');
+    if (inp.checked) {
+      const c = colMap[inp.value] || '#1e40af';
+      lbl.style.borderColor = c; lbl.style.background = c + '11';
+    } else {
+      lbl.style.borderColor = '#e2e8f0'; lbl.style.background = '';
+    }
+  });
+}
+
 async function generaPDF() {
   const { jsPDF } = window.jspdf;
 
@@ -2357,7 +2427,9 @@ async function generaPDF() {
   const tipoEl = document.querySelector('#rapp-tipo-chips .chip.selected');
   const noteIndicazioni = (document.getElementById('rapp-note-display')?.textContent || '').trim();
   const lavori = document.getElementById('rapp-lavori').value;
-  const materiali = document.getElementById('rapp-materiali').value;
+  const matTipo = (document.querySelector('input[name="rapp-mat-tipo"]:checked')?.value || 'nessuno');
+  const materiali = matTipo === 'usati' ? (document.getElementById('rapp-materiali').value || '').trim() : '';
+  const statoImpianto = (document.querySelector('input[name="rapp-stato-impianto"]:checked')?.value || '').trim();
   const prossima = document.getElementById('rapp-prossima').value;
   const firmatario = document.getElementById('rapp-firmatario').value;
   const indirizzo = document.getElementById('rapp-indirizzo').value;
@@ -2365,159 +2437,257 @@ async function generaPDF() {
   const numRapp = document.getElementById('rapp-numero').textContent;
 
   if (!lavori.trim()) { toast('Descrivi i lavori eseguiti'); return; }
+  if (!statoImpianto) { toast('⚠️ Indica lo stato impianto a fine intervento (sezione 4)'); return; }
   if (!_firmaBloccata && signaturePad && signaturePad.isEmpty()) { toast('La firma del cliente è richiesta'); return; }
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const PW = 210; const PH = 297;
-  const M = 15; // margine
-  const CW = PW - M * 2; // content width
-  let y = M;
+  const M = 15; const CW = PW - M * 2; // 180mm
+  let y = 0;
 
-  // ─── HEADER AZZURRO ───────────────────────────────────
+  // ─── HEADER BLU ──────────────────────────────────────
   doc.setFillColor(30, 64, 175);
-  doc.rect(0, 0, PW, 38, 'F');
-
+  doc.rect(0, 0, PW, 42, 'F');
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18); doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20); doc.setFont('helvetica', 'bold');
   doc.text('MDA SOLUTIONS SRL', M, 16);
-  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-  doc.text('Servizi di Manutenzione Professionale', M, 23);
-  if (CONFIG.azienda.telefono) doc.text('Tel: ' + CONFIG.azienda.telefono, M, 29);
-  doc.text(CONFIG.azienda.email, M, CONFIG.azienda.telefono ? 35 : 29);
-
-  // Numero rapportino in alto a destra
-  doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-  doc.text(numRapp, PW - M, 16, { align: 'right' });
   doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-  doc.text('RAPPORTINO D\'INTERVENTO', PW - M, 22, { align: 'right' });
+  doc.text('Servizi di Manutenzione Professionale', M, 23);
+  doc.text(CONFIG.azienda.email || 'manutenzione@mdasolutions.it', M, 30);
+  doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(180, 210, 255);
+  doc.text("RAPPORTINO D'INTERVENTO", PW - M, 20, { align: 'right' });
+  doc.setFontSize(15); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+  doc.text(numRapp, PW - M, 33, { align: 'right' });
 
-  y = 46;
+  y = 48;
 
-  // ─── DATI PRINCIPALI ──────────────────────────────────
-  doc.setTextColor(30, 41, 59);
-
-  const drawBox = (title, x, bY, bW, bH) => {
-    doc.setFillColor(239, 246, 255);
-    doc.roundedRect(x, bY, bW, bH, 2, 2, 'F');
-    doc.setDrawColor(219, 234, 254);
-    doc.roundedRect(x, bY, bW, bH, 2, 2, 'S');
-    doc.setFontSize(7); doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 116, 139);
+  // ─── HELPER: box etichetta ────────────────────────────
+  const drawInfoBox = (title, x, bY, bW, bH, blue) => {
+    if (blue) {
+      doc.setFillColor(30, 64, 175);
+      doc.roundedRect(x, bY, bW, bH, 2, 2, 'F');
+    } else {
+      doc.setFillColor(239, 246, 255);
+      doc.roundedRect(x, bY, bW, bH, 2, 2, 'F');
+      doc.setDrawColor(219, 234, 254);
+      doc.roundedRect(x, bY, bW, bH, 2, 2, 'S');
+    }
+    doc.setFontSize(6.5); doc.setFont('helvetica', 'normal');
+    doc.setTextColor(blue ? 180 : 100, blue ? 210 : 116, blue ? 255 : 139);
     doc.text(title.toUpperCase(), x + 3, bY + 5);
   };
 
-  const dataFmt = data ? new Date(data + 'T12:00').toLocaleDateString('it-IT', {day:'2-digit',month:'long',year:'numeric'}) : '-';
-
-  // Riga 1: Data | Tecnico | Ore
-  const bw1 = (CW - 6) / 3;
-  drawBox('Data Intervento', M, y, bw1, 20);
-  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30,41,59);
-  doc.text(dataFmt, M + 3, y + 13);
-
-  drawBox('Tecnico', M + bw1 + 3, y, bw1, 20);
-  doc.text(tecnico ? tecnico.nome : '-', M + bw1 + 6, y + 13);
-
-  drawBox('Orario / Ore', M + (bw1 + 3) * 2, y, bw1, 20);
-  const orario = (oraInizio || '--:--') + (oraFine ? ' – ' + oraFine : '') + (ore ? ' (' + ore + 'h)' : '');
-  doc.setFontSize(10);
-  doc.text(orario, M + (bw1 + 3) * 2 + 3, y + 13);
-
-  y += 25;
-
-  // Riga 2: Cliente | Tipo Impianto | Commessa
-  const bw2 = commessa ? (CW - 6) / 3 : (CW - 3) / 2;
-  drawBox('Cliente', M, y, commessa ? bw2 * 1.5 + 3 : bw2, 20);
-  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30,41,59);
-  const _clienteLabel = (commessa ? commessa + ' ' : '') + (cliente ? cliente.nome : '-');
-  doc.text(_clienteLabel, M + 3, y + 13, { maxWidth: (commessa ? bw2 * 1.5 : bw2) - 6 });
-
-  const impiCol = M + (commessa ? bw2 * 1.5 + 6 : bw2 + 3);
-  const impiW = commessa ? bw2 * 0.75 : bw2;
-  drawBox('Tipo Impianto', impiCol, y, impiW, 20);
-  doc.text(impiantoEl ? impiantoEl.dataset.val : '-', impiCol + 3, y + 13, { maxWidth: impiW - 6 });
-
-  if (commessa) {
-    drawBox('Commessa / N° Ordine', impiCol + impiW + 3, y, CW - (impiCol - M) - impiW - 3, 20);
-    doc.text(commessa, impiCol + impiW + 6, y + 13);
-  }
-
-  y += 25;
-
-  // Indirizzo
-  if (indirizzo || (cliente && cliente.indirizzo)) {
-    doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139);
-    doc.text('Indirizzo: ' + (indirizzo || cliente.indirizzo), M, y);
-    y += 6;
-  }
-
-  // Tipo intervento badge
-  doc.setFillColor(219, 234, 254);
-  doc.roundedRect(M, y, 60, 8, 2, 2, 'F');
-  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(30,64,175);
-  doc.text((tipoEl ? tipoEl.dataset.val : 'Intervento').toUpperCase(), M + 3, y + 5.5);
-  y += 14;
-
-  // ─── LAVORI ──────────────────────────────────────────
-  const drawSection = (title, content, sy) => {
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(226, 232, 240);
-    const lines = doc.splitTextToSize(content || '-', CW - 10);
-    const sh = Math.max(20, lines.length * 5 + 12);
-    doc.roundedRect(M, sy, CW, sh, 2, 2, 'FD');
-    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(100,116,139);
-    doc.text(title.toUpperCase(), M + 4, sy + 6);
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(30,41,59);
-    doc.text(lines, M + 4, sy + 12);
-    return sy + sh + 5;
+  // ─── HELPER: intestazione sezione numerata ────────────
+  const drawSecHeader = (num, title, sx, sy) => {
+    const r = 3.5;
+    doc.setFillColor(30, 64, 175);
+    doc.circle(sx + r, sy + r, r, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+    doc.text(String(num), sx + r, sy + r + 2.6, { align: 'center' });
+    doc.setTextColor(30, 64, 175); doc.setFontSize(8.5); doc.setFont('helvetica', 'bold');
+    doc.text(title.toUpperCase(), sx + r * 2 + 4, sy + r + 2.2);
+    return sy + r * 2 + 5;
   };
 
+  const dataFmt = data ? new Date(data + 'T12:00').toLocaleDateString('it-IT', {day:'2-digit',month:'long',year:'numeric'}) : '-';
+  const dowFmt  = data ? new Date(data + 'T12:00').toLocaleDateString('it-IT', {weekday:'long'}) : '';
+
+  // ─── RIGA 1: DATA | TECNICO | ORARIO | ORE ───────────
+  const bw1 = (CW - 9) / 4;
+  drawInfoBox('DATA INTERVENTO', M, y, bw1, 22);
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(dataFmt, M + 3, y + 14, { maxWidth: bw1 - 6 });
+  if (dowFmt) { doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139); doc.text(dowFmt, M + 3, y + 20); }
+
+  drawInfoBox('TECNICO', M + bw1 + 3, y, bw1, 22);
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(tecnico ? tecnico.nome : '-', M + bw1 + 6, y + 14, { maxWidth: bw1 - 6 });
+
+  drawInfoBox('ORARIO', M + (bw1 + 3) * 2, y, bw1, 22);
+  const orario = (oraInizio || '--:--') + (oraFine ? ' – ' + oraFine : '');
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(orario, M + (bw1 + 3) * 2 + 3, y + 14, { maxWidth: bw1 - 6 });
+
+  // ORE TOTALI evidenziato
+  drawInfoBox('ORE TOTALI', M + (bw1 + 3) * 3, y, bw1, 22, true);
+  const oreDisplay = ore ? parseFloat(ore).toFixed(1) + ' h' : '-';
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+  doc.text(oreDisplay, M + (bw1 + 3) * 3 + bw1 / 2, y + 16, { align: 'center' });
+
+  y += 27;
+
+  // ─── RIGA 2: CLIENTE | COMMESSA | TIPO ────────────────
+  const bw2a = CW * 0.50; // 50% cliente
+  const bw2b = CW * 0.18; // 18% commessa
+  const bw2c = CW - bw2a - bw2b - 6; // tipo intervento
+  drawInfoBox('CLIENTE', M, y, bw2a, 22);
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(cliente ? cliente.nome : '-', M + 3, y + 14, { maxWidth: bw2a - 6 });
+
+  drawInfoBox('COMMESSA', M + bw2a + 3, y, bw2b, 22);
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(commessa || '-', M + bw2a + 6, y + 14, { maxWidth: bw2b - 6 });
+
+  drawInfoBox('TIPO INTERVENTO', M + bw2a + bw2b + 6, y, bw2c, 22);
+  const tipoLabel = tipoEl ? tipoEl.dataset.val : '-';
+  const tipoFull = tipoLabel === 'MAN. ORDIN.' ? 'Manutenzione ordinaria' :
+                   tipoLabel === 'MAN. STRAORD.' ? 'Manutenzione straordinaria' :
+                   tipoLabel === 'INT. TECNICO' ? 'Intervento tecnico' :
+                   tipoLabel === 'ASS. TECNICA' ? 'Assistenza tecnica' : tipoLabel;
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(tipoFull, M + bw2a + bw2b + 9, y + 14, { maxWidth: bw2c - 6 });
+
+  y += 27;
+
+  // Indirizzo + tipo badge
+  const indir = indirizzo || (cliente && cliente.indirizzo) || '';
+  if (indir) {
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
+    doc.text('Indirizzo: ' + indir, M, y);
+    y += 7;
+  }
+
+  // ─── SEZIONE 1: DESCRIZIONE LAVORI ───────────────────
+  const s1end = drawSecHeader(1, 'Descrizione lavori eseguiti', M, y);
+  y = s1end + 2;
+  const linesLav = doc.splitTextToSize(lavori || '-', CW - 18);
+  const shLav = Math.max(16, linesLav.length * 5.5 + 10);
+  doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(M, y, CW, shLav, 2, 2, 'FD');
+  doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
+  doc.text(linesLav, M + 6, y + 7);
+  y += shLav + 7;
+
+  // ─── SEZIONE 2: INDICAZIONI (se presenti) ────────────
   if (noteIndicazioni) {
-    // Sezione "Indicazioni Intervento" con sfondo azzurro distinguibile
-    const linesNote = doc.splitTextToSize(noteIndicazioni, CW - 10);
-    const shNote = Math.max(18, linesNote.length * 5 + 12);
-    doc.setFillColor(219, 234, 254); // azzurro chiaro
-    doc.setDrawColor(147, 197, 253);
+    const s2end = drawSecHeader(2, 'Indicazioni intervento', M, y);
+    y = s2end + 2;
+    const linesNote = doc.splitTextToSize(noteIndicazioni, CW - 18);
+    const shNote = Math.max(16, linesNote.length * 5.5 + 10);
+    doc.setFillColor(219, 234, 254); doc.setDrawColor(147, 197, 253);
     doc.roundedRect(M, y, CW, shNote, 2, 2, 'FD');
-    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 64, 175);
-    doc.text('INDICAZIONI INTERVENTO', M + 4, y + 6);
     doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
-    doc.text(linesNote, M + 4, y + 12);
-    y += shNote + 5;
+    doc.text(linesNote, M + 6, y + 7);
+    y += shNote + 7;
   }
-  y = drawSection('Lavori Eseguiti', lavori, y);
-  if (materiali.trim()) y = drawSection('Materiali Utilizzati', materiali, y);
-  if (prossima.trim()) y = drawSection('Prossima Manutenzione Prevista', prossima, y);
 
-  // ─── FIRMA ───────────────────────────────────────────
-  // Assicurarsi che ci sia spazio per la firma (min 60mm)
-  if (y > PH - 75) { doc.addPage(); y = M; }
+  // ─── SEZIONI 3 + 4 (AFFIANCATE) ──────────────────────
+  const halfW = (CW - 5) / 2;
+  const matLines = materiali ? doc.splitTextToSize(materiali, halfW - 18) : [];
+  const sec34H = Math.max(matLines.length * 5.5 + 20, 44);
 
-  doc.setDrawColor(226, 232, 240);
-  doc.setFillColor(255, 255, 255);
-  doc.roundedRect(M, y, CW, 55, 2, 2, 'FD');
+  // Check page break
+  if (y + sec34H + 75 > PH - M) { doc.addPage(); y = M; }
 
-  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(100,116,139);
-  doc.text('FIRMA CLIENTE — accettazione lavori eseguiti', M + 4, y + 6);
+  const s3end = drawSecHeader(3, 'Materiali utilizzati', M, y);
+  const s4end = drawSecHeader(4, 'Stato impianto a fine intervento', M + halfW + 5, y);
+  y = Math.max(s3end, s4end) + 2;
 
-  // Aggiungi firma come immagine (usa la firma bloccata se disponibile)
-  const sigData = _firmaBloccata || signaturePad.toDataURL();
+  // Box 3
+  doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(M, y, halfW, sec34H, 2, 2, 'FD');
+  if (!materiali) {
+    doc.setFontSize(9); doc.setFont('helvetica', 'italic'); doc.setTextColor(148, 163, 184);
+    doc.text('Nessun materiale utilizzato', M + 6, y + 11);
+  } else {
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
+    doc.text(matLines, M + 6, y + 8);
+  }
+
+  // Box 4
+  doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(M + halfW + 5, y, halfW, sec34H, 2, 2, 'FD');
+
+  const statiList = ['Funzionante', 'Funzionante con riserva', 'Fermo / non funzionante'];
+  const statiCols = { 'Funzionante': [16,185,129], 'Funzionante con riserva': [245,158,11], 'Fermo / non funzionante': [239,68,68] };
+  statiList.forEach((s, idx) => {
+    const ckX = M + halfW + 9; const ckY = y + 9 + idx * 12;
+    const col = statiCols[s] || [100,116,139];
+    const checked = (statoImpianto === s);
+    doc.setDrawColor(...col);
+    if (checked) {
+      doc.setFillColor(...col); doc.roundedRect(ckX, ckY - 2, 4.5, 4.5, 0.5, 0.5, 'FD');
+      doc.setDrawColor(255,255,255); doc.setLineWidth(0.5);
+      doc.line(ckX + 0.8, ckY + 0.6, ckX + 1.9, ckY + 1.9);
+      doc.line(ckX + 1.9, ckY + 1.9, ckX + 3.8, ckY - 0.5);
+      doc.setLineWidth(0.2);
+    } else {
+      doc.setFillColor(255,255,255); doc.roundedRect(ckX, ckY - 2, 4.5, 4.5, 0.5, 0.5, 'FD');
+    }
+    doc.setFontSize(9); doc.setFont('helvetica', checked ? 'bold' : 'normal');
+    doc.setTextColor(...(checked ? col : [100,116,139]));
+    // Aggiungi "(vedi anomalie)" su riga separata se riserva
+    const displayLabel = s === 'Funzionante con riserva' ? 'Funzionante con riserva' : s;
+    doc.text(displayLabel, ckX + 6, ckY + 1, { maxWidth: halfW - 20 });
+    if (s === 'Funzionante con riserva') {
+      doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(180,180,180);
+      doc.text('(vedi anomalie)', ckX + 6, ckY + 6);
+    }
+  });
+
+  y += sec34H + 7;
+
+  // Prossima manutenzione (se presente, prima delle firme)
+  if (prossima.trim()) {
+    if (y + 20 > PH - M) { doc.addPage(); y = M; }
+    doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139);
+    doc.text('PROSSIMA MANUTENZIONE PREVISTA', M, y);
+    y += 4;
+    doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30,41,59);
+    doc.text(prossima, M, y + 4);
+    y += 12;
+  }
+
+  // ─── SEZIONE 5: FIRME ────────────────────────────────
+  if (y + 68 > PH - M) { doc.addPage(); y = M; }
+  const s5end = drawSecHeader(5, 'Firme', M, y);
+  y = s5end + 2;
+  const firmaH = 56;
+
+  // TECNICO MDA (sinistra)
+  doc.setFillColor(255, 255, 255); doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(M, y, halfW, firmaH, 2, 2, 'FD');
+  doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(100,116,139);
+  doc.text('TECNICO MDA', M + 4, y + 6);
+  // Linea firma
+  doc.setDrawColor(200, 210, 220); doc.setLineWidth(0.3);
+  doc.line(M + 8, y + 32, M + halfW - 8, y + 32);
+  doc.setLineWidth(0.2);
+  doc.setFontSize(8.5); doc.setFont('helvetica', 'italic'); doc.setTextColor(200,210,220);
+  doc.text('firma tecnico', M + halfW / 2, y + 27, { align: 'center' });
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(50,60,80);
+  doc.text('Nome: ' + (tecnico ? tecnico.nome : '-'), M + 4, y + 39);
+  doc.text('Data/ora: ' + (data ? new Date(data+'T12:00').toLocaleDateString('it-IT') : '-'), M + 4, y + 46);
+
+  // CLIENTE (destra)
+  doc.setFillColor(255, 255, 255); doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(M + halfW + 5, y, halfW, firmaH, 2, 2, 'FD');
+  doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(100,116,139);
+  doc.text('CLIENTE — ACCETTAZIONE LAVORI ESEGUITI', M + halfW + 9, y + 6, { maxWidth: halfW - 12 });
+  // Firma immagine
+  const sigData = _firmaBloccata || (signaturePad && !signaturePad.isEmpty() ? signaturePad.toDataURL() : null);
   if (sigData && sigData.length > 100) {
-    doc.addImage(sigData, 'PNG', M + 4, y + 9, 80, 35);
+    doc.addImage(sigData, 'PNG', M + halfW + 9, y + 8, halfW - 18, 24);
   }
+  doc.setDrawColor(30, 64, 175); doc.setLineWidth(0.3);
+  doc.line(M + halfW + 9, y + 34, M + halfW + halfW - 4, y + 34);
+  doc.setLineWidth(0.2);
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(50,60,80);
+  if (firmatario) doc.text(firmatario, M + halfW + 9, y + 40);
+  doc.setFontSize(6.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139);
+  const disclaimer = doc.splitTextToSize('Il sottoscritto dichiara che i lavori sopra descritti sono stati eseguiti in sua presenza e di aver preso visione delle anomalie segnalate.', halfW - 12);
+  doc.text(disclaimer, M + halfW + 9, y + 46);
 
-  // Riga firma a destra
-  doc.setDrawColor(30, 64, 175);
-  doc.line(M + CW - 80, y + 44, M + CW - 4, y + 44);
-  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139);
-  doc.text(firmatario || '(nome firmatario)', M + CW - 80, y + 50);
-
-  y += 60;
+  y += firmaH + 5;
 
   // ─── FOOTER ──────────────────────────────────────────
-  doc.setFontSize(7); doc.setTextColor(150,150,150);
-  doc.text('MDA SOLUTIONS SRL  |  V. B. Buozzi 55, San Donato Milanese 20097 Milano  |  P. IVA 12111390964  |  Documento generato il ' + new Date().toLocaleString('it-IT'), PW/2, PH - 8, {align:'center'});
-  doc.setDrawColor(219,234,254);
+  doc.setDrawColor(219, 234, 254); doc.setLineWidth(0.3);
   doc.line(M, PH - 12, PW - M, PH - 12);
+  doc.setLineWidth(0.2);
+  doc.setFontSize(7); doc.setTextColor(150, 150, 150);
+  doc.text('MDA SOLUTIONS SRL · V. B. Buozzi 55, 20097 San Donato Milanese (MI) · P. IVA 12111390964', PW/2, PH - 8, {align:'center'});
+  doc.setFontSize(6.5);
+  doc.text('Generato il ' + new Date().toLocaleString('it-IT') + ' · Pag. 1 di 1', PW/2, PH - 4, {align:'center'});
 
   // Genera blob PDF unico — usato sia per il download locale che per Drive
   const nomeCliente = (cliente ? cliente.nome : 'Cliente').replace(/[^a-zA-Z0-9À-ÿ]/g, '_').replace(/_+/g,'_');
@@ -2574,6 +2744,7 @@ async function generaPDF() {
     data,
     ore: oreNum,
     tipo: tipoEl ? tipoEl.dataset.val : '-',
+    statoImpianto,
     creato: new Date().toISOString(),
     allegati: _rappAllegatiPending.length ? [..._rappAllegatiPending] : undefined
   };
@@ -5156,7 +5327,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.53'; // fix: deduplicazione rapportini (record fantasma numero 0000 gonfiavano le ore)
+const _APP_VERSION = '2.54'; // fix: nuovo layout PDF rapportino (facsimile), sezione stato impianto obbligatoria, materiali radio
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
