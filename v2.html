@@ -766,6 +766,21 @@
       <strong id="rapp-numero">MDA-2026-0001</strong>
     </div>
 
+    <!-- Contatore ore giornaliere -->
+    <div id="rapp-ore-giornata-box" style="display:flex;align-items:center;justify-content:space-between;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:10px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:20px">⏱️</span>
+        <div>
+          <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Ore registrate oggi</div>
+          <div id="rapp-ore-giornata" style="font-size:22px;font-weight:800;color:#1e40af;line-height:1.1">0,0 h</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:#64748b">Rapportini inviati</div>
+        <div id="rapp-count-giornata" style="font-size:18px;font-weight:700;color:#1e40af">0</div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="form-group">
         <label class="form-label">Tecnico</label>
@@ -1311,6 +1326,8 @@ function showTab(tab) {
     requestAnimationFrame(() => resizeCanvas());
     // Aggiorna sezione allegati (mostra/nasconde in base allo stato Drive)
     renderRappAllegati();
+    // Aggiorna contatore ore registrate oggi
+    aggiornaContratoreOreGiornata();
     // Quando il tab si apre direttamente (senza apriRapportinoDa), imposta rapp-data
     // alla data correntemente selezionata nel calendario. Se invece si arriva tramite
     // apriRapportinoDa(), la chiamata a document.getElementById('rapp-data').value = a.data
@@ -2379,6 +2396,67 @@ function _fmtRappNum(techId, num) {
 /* ═══════════════════════════════════════════════════════════
    GENERA PDF
 ═══════════════════════════════════════════════════════════ */
+// Aggiorna contatore ore giornaliere per il tecnico corrente
+function aggiornaContratoreOreGiornata() {
+  try {
+    const oggi = new Date().toISOString().split('T')[0];
+    const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+    const techId = currentTech?.id;
+    const rappoggI = archivio.filter(r => r.data === oggi && (!techId || r.tecnico === techId));
+    const totOre = rappoggI.reduce((s, r) => s + (parseFloat(r.ore) || 0), 0);
+    const elOre = document.getElementById('rapp-ore-giornata');
+    const elCount = document.getElementById('rapp-count-giornata');
+    if (elOre) elOre.textContent = totOre.toFixed(1).replace('.', ',') + ' h';
+    if (elCount) elCount.textContent = rappoggI.length;
+    // Colora in verde se ore > 0
+    const box = document.getElementById('rapp-ore-giornata-box');
+    if (box) {
+      if (totOre > 0) {
+        box.style.background = '#f0fdf4'; box.style.borderColor = '#86efac';
+        if (elOre) elOre.style.color = '#16a34a';
+        if (elCount) elCount.style.color = '#16a34a';
+      } else {
+        box.style.background = '#eff6ff'; box.style.borderColor = '#bfdbfe';
+        if (elOre) elOre.style.color = '#1e40af';
+        if (elCount) elCount.style.color = '#1e40af';
+      }
+    }
+  } catch(e) {}
+}
+
+// Reset completo del form rapportino dopo invio
+function resetFormRapportino() {
+  // Campi testo/textarea
+  ['rapp-lavori','rapp-materiali','rapp-prossima','rapp-firmatario','rapp-note-indicazioni'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  // Orari
+  ['rapp-ora-inizio','rapp-ora-fine'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  // Radio materiali → torna a "nessuno"
+  const matNessuno = document.querySelector('input[name="rapp-mat-tipo"][value="nessuno"]');
+  if (matNessuno) { matNessuno.checked = true; toggleMateriali(matNessuno); }
+  // Radio stato impianto → deseleziona tutto
+  document.querySelectorAll('input[name="rapp-stato-impianto"]').forEach(r => { r.checked = false; });
+  aggiornaStatoStyle();
+  // Nascondi textarea materiali
+  const matCont = document.getElementById('rapp-materiali-container');
+  if (matCont) matCont.style.display = 'none';
+  // Pulisci firma
+  if (signaturePad && !_firmaBloccata) signaturePad.clear();
+  // Cliente → resetta selezione (solo se non aperto da appuntamento)
+  const rappCliente = document.getElementById('rapp-cliente');
+  if (rappCliente) rappCliente.value = '';
+  // Commessa
+  const rappCommessa = document.getElementById('rapp-commessa');
+  if (rappCommessa) rappCommessa.value = '';
+  // Toast conferma
+  toast('✅ Rapportino salvato — form pronto per il prossimo intervento');
+}
+
 function toggleMateriali(el) {
   const container = document.getElementById('rapp-materiali-container');
   const lblNessuno = document.getElementById('rapp-mat-lbl-nessuno');
@@ -2757,6 +2835,9 @@ async function generaPDF() {
   // Reset allegati pending dopo il salvataggio
   _rappAllegatiPending = [];
   renderRappAllegati();
+  // Aggiorna contatore ore giornaliere e resetta il form per il prossimo intervento
+  aggiornaContratoreOreGiornata();
+  resetFormRapportino();
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -5327,7 +5408,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.55'; // fix: PDF su pagina singola (compressione spaziature)
+const _APP_VERSION = '2.56'; // new: reset form post-invio + contatore ore giornaliere
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
