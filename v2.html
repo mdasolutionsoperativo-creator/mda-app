@@ -767,7 +767,7 @@
     </div>
 
     <!-- Contatore ore giornaliere -->
-    <div id="rapp-ore-giornata-box" style="display:flex;align-items:center;justify-content:space-between;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:10px 16px;margin-bottom:12px">
+    <div id="rapp-ore-giornata-box" style="display:flex;align-items:center;justify-content:space-between;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:10px 16px;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-size:20px">⏱️</span>
         <div>
@@ -778,6 +778,18 @@
       <div style="text-align:right">
         <div style="font-size:11px;color:#64748b">Rapportini inviati</div>
         <div id="rapp-count-giornata" style="font-size:18px;font-weight:700;color:#1e40af">0</div>
+      </div>
+    </div>
+
+    <!-- Lista rapportini recenti con possibilità di cancellazione -->
+    <div id="rapp-lista-box" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;margin-bottom:12px;overflow:hidden">
+      <div onclick="document.getElementById('rapp-lista-inner').style.display=document.getElementById('rapp-lista-inner').style.display==='none'?'block':'none';this.querySelector('.rapp-lista-arr').textContent=document.getElementById('rapp-lista-inner').style.display==='none'?'▶':'▼'"
+           style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none">
+        <span style="font-size:13px;font-weight:700;color:#475569">📋 Rapportini inviati</span>
+        <span class="rapp-lista-arr" style="font-size:11px;color:#94a3b8">▶</span>
+      </div>
+      <div id="rapp-lista-inner" style="display:none;border-top:1px solid #e2e8f0">
+        <div id="rapp-lista-items" style="padding:4px 0"></div>
       </div>
     </div>
 
@@ -1064,12 +1076,15 @@ let CLIENTI = JSON.parse(localStorage.getItem('mda_clienti') || JSON.stringify([
   { id: 'M141', codice: 'M 141', nome: "Asilo Via Dezza", indirizzo: "Via Dezza, 20144 Milano (MI)" },
   { id: 'M160', codice: 'M 160', nome: "Parrocchia San Donato", indirizzo: "Via Trento, 6, 20097 San Donato Milanese (MI)" },
   { id: 'M164', codice: 'M 164', nome: "Condominio Mairano", indirizzo: "Via Padre Ladie, Mairano (MI)" },
-  { id: 'M174', codice: 'M 174', nome: "Teddy Group - Via Torino", indirizzo: "Via Torino, 29, 20123 Milano" },
+  { id: 'M174', codice: 'M 174', nome: "Teddy Group - Via Torino", indirizzo: "Via Torino, 29, 20123 Milano",
+    sedeLegale: "Via Coriano 58, 47924 Rimini", ragioneSociale: "TEDDY S.P.A.",
+    referente: "Moreno Bronzetti", email: "mbronzetti@teddy.it", emailAmm: "lamadei@teddy.it", sdi: "X46AXNR" },
   { id: 'M178', codice: 'M 178', nome: "Condominio Residenziale Leonardo", indirizzo: "Via Di Vittorio 1, 20060 Mediglia (MI)" },
   { id: 'M183', codice: 'M 183', nome: "Immobiliare Triveneta", indirizzo: "Piazza SS. Trinità, 20154 Milano (MI)" },
   { id: 'M193', codice: 'M 193', nome: "Roland Berger - Via Gioia 8", indirizzo: "Via Melchiorre Gioia, 8, Milano (MI)" },
   { id: 'M199', codice: 'M 199', nome: "Condominio Via Monviso 32", indirizzo: "Via Monviso 32, 20100 Milano (MI)" },
-  { id: 'M208', codice: 'M 208', nome: "KFI Binasco", indirizzo: "Via delle Scienze, 19-21, 20082 Binasco (MI)" },
+  { id: 'M208', codice: 'M 208', nome: "KFI Binasco", indirizzo: "Via delle Scienze 21, 20082 Binasco (MI)",
+    referente: "P. Clemente", tel: "348 5703009", email: "P.Clemente@kfi.it", sdi: "A4707H7" },
   { id: 'M224', codice: 'M 224', nome: "Condominio I Glicini", indirizzo: "Via Calvino 3, 20098 San Giuliano Milanese (MI)" },
   { id: 'M234', codice: 'M 234', nome: "Parrocchia Rosate Milanese", indirizzo: "Viale Rimembranze, 28, 20088 Rosate (MI)" },
   { id: 'M241', codice: 'M 241', nome: "Condominio Via Mecenate 115", indirizzo: "Via Mecenate 115, 20138 Milano (MI)" },
@@ -1114,7 +1129,9 @@ let CLIENTI = JSON.parse(localStorage.getItem('mda_clienti') || JSON.stringify([
   { id: 'M544', codice: 'M 544', nome: "Asilo Nido Via Friuli", indirizzo: "Via Friuli, 20135 Milano (MI)" },
   { id: 'M545', codice: 'M 545', nome: "Asilo Nido Grandate (CO)", indirizzo: "Via Tornese, 10, 22070 Grandate CO" },
   { id: 'M546', codice: 'M 546', nome: "Palazzo C.O.N.I. - VIA PIRANESI", indirizzo: "Via Giovanni Battista Piranesi, 46, 20137 Milano MI" },
-  { id: 'E099', codice: 'E 099', nome: "Auditorium La Verdi", indirizzo: "Largo Gustav Mahler, 20136 Milano (MI)" },
+  { id: 'E099', codice: 'E 099', nome: "Auditorium La Verdi", indirizzo: "Via Torricelli 2, 20136 Milano",
+    referente: "Domenico Cane", tel: "338 4543710", email: "DOMENICO.CANE@LAVERDI.ORG",
+    email2: "info@auditoriumdimilano.org", emailAmm: "paola.ottobrino@laverdi.it", sdi: "J6URRTW" },
   { id: 'E107', codice: 'E 107', nome: "Stab. Fiema", indirizzo: "Via Giovanni Keplero 4, 20016 Pero (MI)" },
   { id: 'E108', codice: 'E 108', nome: "Uff. P.za SS. Trinità", indirizzo: "Piazza SS. Trinità 6, Milano (MI)" },
   { id: 'E109', codice: 'E 109', nome: "Uff. Proger SS. Trinità", indirizzo: "Piazza SS. Trinità 6, Milano (MI)" },
@@ -1126,6 +1143,25 @@ let CLIENTI = JSON.parse(localStorage.getItem('mda_clienti') || JSON.stringify([
   { id: 'F003', codice: 'F 003', nome: "Comoli e Ferrari", indirizzo: "Via Piemonte 5/7, 20073 Opera (MI)" },
   { id: 'VARIE', codice: 'VAR', nome: "VARIE", indirizzo: "" }
 ]));
+
+// Migrazione anagrafica: aggiorna campi extra su dispositivi con localStorage già popolato
+(function _patchClienti() {
+  const patches = {
+    E099: { indirizzo: "Via Torricelli 2, 20136 Milano", referente: "Domenico Cane",
+            tel: "338 4543710", email: "DOMENICO.CANE@LAVERDI.ORG",
+            email2: "info@auditoriumdimilano.org", emailAmm: "paola.ottobrino@laverdi.it", sdi: "J6URRTW" },
+    M174: { sedeLegale: "Via Coriano 58, 47924 Rimini", ragioneSociale: "TEDDY S.P.A.",
+            referente: "Moreno Bronzetti", email: "mbronzetti@teddy.it",
+            emailAmm: "lamadei@teddy.it", sdi: "X46AXNR" },
+    M208: { indirizzo: "Via delle Scienze 21, 20082 Binasco (MI)", referente: "P. Clemente",
+            tel: "348 5703009", email: "P.Clemente@kfi.it", sdi: "A4707H7" }
+  };
+  let changed = false;
+  CLIENTI.forEach(c => {
+    if (patches[c.id]) { Object.assign(c, patches[c.id]); changed = true; }
+  });
+  if (changed) try { localStorage.setItem('mda_clienti', JSON.stringify(CLIENTI)); } catch(e) {}
+})();
 
 /* ═══════════════════════════════════════════════════════════
    STATO
@@ -1326,8 +1362,9 @@ function showTab(tab) {
     requestAnimationFrame(() => resizeCanvas());
     // Aggiorna sezione allegati (mostra/nasconde in base allo stato Drive)
     renderRappAllegati();
-    // Aggiorna contatore ore registrate oggi
+    // Aggiorna contatore ore registrate oggi e lista rapportini
     aggiornaContratoreOreGiornata();
+    renderRappListaRecenti();
     // Quando il tab si apre direttamente (senza apriRapportinoDa), imposta rapp-data
     // alla data correntemente selezionata nel calendario. Se invece si arriva tramite
     // apriRapportinoDa(), la chiamata a document.getElementById('rapp-data').value = a.data
@@ -2396,6 +2433,92 @@ function _fmtRappNum(techId, num) {
 /* ═══════════════════════════════════════════════════════════
    GENERA PDF
 ═══════════════════════════════════════════════════════════ */
+// ── Elimina il JSON sidecar di un rapportino da Drive (_meta) ─────────────
+async function _deleteRappMetaDrive(rappId) {
+  if (!_driveToken || !GCAL.DRIVE_FOLDER_ID) return false;
+  try {
+    const metaFolderId = await _driveGetMetaFolderId();
+    const fname = 'rapp_meta_' + rappId + '.json';
+    // Cerca in _meta
+    const q = encodeURIComponent(`name='${fname}' and trashed=false`);
+    const resp = await _swFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,parents)`, {
+      headers: { Authorization: `Bearer ${_driveToken}` }
+    });
+    if (!resp.ok) return false;
+    const { files } = await resp.json();
+    if (!files || !files.length) return false;
+    // Manda nel cestino
+    for (const f of files) {
+      await _swFetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+        body: new Blob([JSON.stringify({ trashed: true })], { type: 'application/json' })
+      });
+    }
+    return true;
+  } catch(e) { console.warn('_deleteRappMetaDrive failed:', e); return false; }
+}
+
+// ── Cancella un rapportino (localStorage + Drive JSON) ─────────────────────
+async function cancellaRapportino(id) {
+  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  const rapp = archivio.find(r => r.id === id);
+  if (!rapp) return;
+  const cliente = (CLIENTI.find(c => c.id === rapp.cliente) || {}).nome || rapp.cliente || '?';
+  // Conferma inline — bottone già mostrato come "Sei sicuro?" dallo UI
+  // Rimuovi da localStorage
+  const nuovi = archivio.filter(r => r.id !== id);
+  localStorage.setItem('mda_rapportini', JSON.stringify(nuovi));
+  // Elimina il JSON da Drive (asincrono, non bloccante)
+  const driveOk = await _deleteRappMetaDrive(id);
+  toast(driveOk
+    ? `🗑 Rapportino ${rapp.numero ? '#' + rapp.numero : ''} eliminato (anche da Drive)`
+    : `🗑 Rapportino eliminato (Drive non connesso — ricalcola presenze manualmente)`);
+  renderRappListaRecenti();
+  aggiornaContratoreOreGiornata();
+}
+
+// ── Render lista rapportini recenti nel tab ────────────────────────────────
+function renderRappListaRecenti() {
+  const el = document.getElementById('rapp-lista-items');
+  if (!el) return;
+  try {
+    const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+    const techId = currentTech?.id;
+    const miei = archivio
+      .filter(r => !techId || r.tecnico === techId)
+      .sort((a, b) => (b.creato || b.data || '').localeCompare(a.creato || a.data || ''))
+      .slice(0, 20);
+    if (!miei.length) {
+      el.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:#94a3b8;text-align:center">Nessun rapportino registrato</div>';
+      return;
+    }
+    el.innerHTML = miei.map(r => {
+      const cliente = (CLIENTI.find(c => c.id === r.cliente) || {}).nome || r.cliente || '?';
+      const data = r.data ? r.data.split('-').reverse().join('/') : '?';
+      const num = r.numero ? '#' + String(r.numero).padStart(4,'0') : '';
+      return `<div id="rapp-item-${r.id}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #f1f5f9;gap:8px">
+        <div style="min-width:0;flex:1">
+          <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cliente}</div>
+          <div style="font-size:11px;color:#64748b">${data} · ${r.ore || 0}h ${num ? '· '+num : ''}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0" id="rapp-item-btns-${r.id}">
+          <button onclick="rappConfirmDelete('${r.id}')" style="background:#fee2e2;color:#dc2626;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = ''; }
+}
+
+// Mostra conferma inline per cancellazione
+function rappConfirmDelete(id) {
+  const btns = document.getElementById('rapp-item-btns-' + id);
+  if (!btns) return;
+  btns.innerHTML = `
+    <button onclick="cancellaRapportino('${id}')" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer">Elimina</button>
+    <button onclick="renderRappListaRecenti()" style="background:#e2e8f0;color:#475569;border:none;border-radius:8px;padding:5px 10px;font-size:11px;cursor:pointer">Annulla</button>`;
+}
+
 // Aggiorna contatore ore giornaliere per il tecnico corrente
 function aggiornaContratoreOreGiornata() {
   try {
@@ -2835,8 +2958,9 @@ async function generaPDF() {
   // Reset allegati pending dopo il salvataggio
   _rappAllegatiPending = [];
   renderRappAllegati();
-  // Aggiorna contatore ore giornaliere e resetta il form per il prossimo intervento
+  // Aggiorna contatore ore giornaliere, lista rapportini e resetta il form per il prossimo intervento
   aggiornaContratoreOreGiornata();
+  renderRappListaRecenti();
   resetFormRapportino();
 }
 
@@ -5408,7 +5532,7 @@ function caricaDatiDemo() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.56'; // new: reset form post-invio + contatore ore giornaliere
+const _APP_VERSION = '2.58'; // new: cancellazione rapportini (lista + eliminazione Drive JSON)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
