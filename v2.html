@@ -526,6 +526,43 @@
       </div>
     </div>
 
+    <!-- Admin: Reperibilità -->
+    <div id="reperibilita-section" style="display:none;margin-top:16px">
+      <p class="section-title">📡 Reperibilità</p>
+      <div class="card" style="padding:14px;margin-bottom:10px">
+        <p style="font-size:12px;color:var(--sub);margin-bottom:12px">Registra i periodi di reperibilità. I dati appariranno nel report presenze mensile e nel file ore ad personam.</p>
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">Tecnico</label>
+          <select class="form-control" id="reper-tecnico"></select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Dal</label>
+            <input type="date" class="form-control" id="reper-dal">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Al</label>
+            <input type="date" class="form-control" id="reper-al">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Ore totali reperibilità</label>
+            <input type="number" class="form-control" id="reper-ore" placeholder="es. 8" min="0" step="0.5">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Note (opzionale)</label>
+            <input type="text" class="form-control" id="reper-note" placeholder="es. Settimana 22">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="aggiungiReperibilita()" style="font-size:14px;padding:10px;width:100%">📡 Aggiungi periodo reperibilità</button>
+      </div>
+      <div class="card" style="padding:14px">
+        <p style="font-size:13px;font-weight:700;color:#334155;margin-bottom:10px">Periodi inseriti</p>
+        <div id="reper-lista"></div>
+      </div>
+    </div>
+
     <!-- Admin: Conteggio ore e presenze -->
     <div id="ore-section" style="display:none;margin-top:16px">
       <p class="section-title">⏱ Ore &amp; Presenze</p>
@@ -564,6 +601,43 @@
           </div>
         </div>
         <button class="btn btn-primary" onclick="generaReportSENED()" style="font-size:14px;padding:10px">📋 Genera presenze per tutti</button>
+      </div>
+      <div class="card" style="padding:14px;margin-top:10px">
+        <p style="font-size:14px;font-weight:700;margin-bottom:4px">👤 Ore ad personam (Ufficio Paghe)</p>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:12px">Genera il file "Elenco dipendenti per compilazione presenze" per l'ufficio paghe, con griglia giornaliera ore, reperibilità, ferie e malattia per ogni dipendente.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Mese</label>
+            <select class="form-control" id="paghe-mese">
+              <option value="1">Gennaio</option><option value="2">Febbraio</option>
+              <option value="3">Marzo</option><option value="4">Aprile</option>
+              <option value="5">Maggio</option><option value="6">Giugno</option>
+              <option value="7">Luglio</option><option value="8">Agosto</option>
+              <option value="9">Settembre</option><option value="10">Ottobre</option>
+              <option value="11">Novembre</option><option value="12">Dicembre</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Anno</label>
+            <input type="number" class="form-control" id="paghe-anno" value="2026" min="2020" max="2035">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="generaOreAdPersonam()" style="font-size:14px;padding:10px">👤 Genera ore ad personam</button>
+      </div>
+      <div class="card" style="padding:14px;margin-top:10px">
+        <p style="font-size:14px;font-weight:700;margin-bottom:4px">📄 Elenco Rapportini</p>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:12px">Genera l'elenco documenti con tipo, numero rapportino, data e cliente — come il vecchio gestionale.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Da data (opzionale)</label>
+            <input type="date" class="form-control" id="elenco-rapp-dal">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">A data (opzionale)</label>
+            <input type="date" class="form-control" id="elenco-rapp-al">
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="generaElencoRapportini()" style="font-size:14px;padding:10px">📄 Genera elenco rapportini</button>
       </div>
     </div>
 
@@ -1043,6 +1117,15 @@ const CONFIG = {
   }
 };
 
+// Dati paghe per ogni tecnico (ufficio paghe)
+const CONFIG_PAYROLL = {
+  matteo: { cognome: 'MARE',    nome: 'MATTEO',  qualifica: 'OPERAI MENSILIZZATI',  livello: 'C2', contratto: 'Tempo Indeterminato', assunzione: '22/01/2025', matricola: '5841' },
+  abramo: { cognome: 'BOUNINE', nome: 'ABRAMO',  qualifica: 'OPERAI MENSILIZZATI',  livello: 'C3', contratto: 'Tempo Indeterminato', assunzione: '01/01/2025', matricola: '' },
+  brigen: { cognome: 'VRAPI',   nome: 'BRIGEN',  qualifica: 'OPERAI MENSILIZZATI',  livello: 'C3', contratto: 'Tempo Indeterminato', assunzione: '20/04/2026', matricola: '5177' },
+  senny:  { cognome: 'FASL',    nome: 'TESHAE SENED', qualifica: 'APPR PROFES.OPERAI',  livello: 'D2', contratto: 'Tempo Indeterminato', assunzione: '11/06/2026', matricola: '5423' },
+  teo:    { cognome: 'GATU',    nome: 'MATTEO',  qualifica: 'APPR PROFES.OPERAI 1', livello: 'D2', contratto: 'Tempo Indeterminato', assunzione: '15/06/2026', matricola: '5443' },
+};
+
 /* ═══════════════════════════════════════════════════════════
    GOOGLE CALENDAR — CONFIGURAZIONE
    Compilare dopo il setup su Google Cloud Console
@@ -1177,6 +1260,7 @@ let rapportinoNum = Math.max(1, parseInt(localStorage.getItem('mda_rapp_num') ||
 let appuntamenti = JSON.parse(localStorage.getItem('mda_appuntamenti') || '[]');
 let interventoExtra = JSON.parse(localStorage.getItem('mda_extra') || '[]');
 let ferie = JSON.parse(localStorage.getItem('mda_ferie') || '[]');
+let reperibilita = JSON.parse(localStorage.getItem('mda_reperibilita') || '[]');
 
 /* ═══════════════════════════════════════════════════════════
    LOGIN — PIN
@@ -1253,6 +1337,7 @@ function initMain() {
     document.getElementById('admin-banner-home').style.display = 'flex';
     document.getElementById('admin-tech-section').style.display = 'block';
     document.getElementById('ferie-section').style.display = 'block';
+    document.getElementById('reperibilita-section').style.display = 'block';
     document.getElementById('ore-section').style.display = 'block';
     document.getElementById('gcal-section').style.display = 'block';
     document.getElementById('drive-config-section').style.display = 'block';
@@ -1272,6 +1357,17 @@ function initMain() {
       ferieSelect.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
     });
     renderFerieAdmin();
+    // Popola select reperibilità
+    const reperSelect = document.getElementById('reper-tecnico');
+    reperSelect.innerHTML = '<option value="">— Seleziona tecnico —</option>';
+    Object.values(CONFIG.tecnici).filter(t => !t.isAdmin).forEach(t => {
+      reperSelect.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
+    });
+    renderReperibilitaAdmin();
+    // Pre-seleziona mese/anno corrente per paghe e elenco
+    const _now2 = new Date();
+    document.getElementById('paghe-mese').value = _now2.getMonth() + 1;
+    document.getElementById('paghe-anno').value = _now2.getFullYear();
   }
 
   // Non-admin: mostra sezione presenze personali + sync Calendar + aggiornamento app
@@ -2290,6 +2386,7 @@ function salvaIntervento() {
 function saveAppuntamenti() { localStorage.setItem('mda_appuntamenti', JSON.stringify(appuntamenti)); }
 function saveExtra() { localStorage.setItem('mda_extra', JSON.stringify(interventoExtra)); }
 function saveFerie() { localStorage.setItem('mda_ferie', JSON.stringify(ferie)); }
+function saveReperibilita() { localStorage.setItem('mda_reperibilita', JSON.stringify(reperibilita)); }
 
 /* ══ Gestione Ferie ══════════════════════════════════════ */
 function aggiungiFeria() {
@@ -2350,6 +2447,77 @@ function renderFerieAdmin() {
         <button onclick="eliminaFeria('${f.id}')" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:18px;padding:0 4px;flex-shrink:0">×</button>
       </div>`;
   }).join('');
+}
+
+/* ══ Gestione Reperibilità ═══════════════════════════════ */
+function aggiungiReperibilita() {
+  const tecnicoId = document.getElementById('reper-tecnico').value;
+  const dal = document.getElementById('reper-dal').value;
+  const al  = document.getElementById('reper-al').value;
+  const ore = parseFloat(document.getElementById('reper-ore').value) || 0;
+  const note = (document.getElementById('reper-note')?.value || '').trim();
+
+  if (!tecnicoId) { toast('Seleziona un tecnico'); return; }
+  if (!dal || !al) { toast('Inserisci date dal/al'); return; }
+  if (al < dal) { toast('La data finale deve essere >= di quella iniziale'); return; }
+
+  reperibilita.push({ id: 'rp_' + Date.now(), tecnicoId, dal, al, ore, note });
+  saveReperibilita();
+  renderReperibilitaAdmin();
+  document.getElementById('reper-dal').value = '';
+  document.getElementById('reper-al').value = '';
+  document.getElementById('reper-ore').value = '';
+  if (document.getElementById('reper-note')) document.getElementById('reper-note').value = '';
+  toast('✅ Reperibilità aggiunta');
+}
+
+function eliminaReperibilita(id) {
+  reperibilita = reperibilita.filter(r => r.id !== id);
+  saveReperibilita();
+  renderReperibilitaAdmin();
+  toast('Periodo reperibilità rimosso');
+}
+
+function renderReperibilitaAdmin() {
+  const container = document.getElementById('reper-lista');
+  if (!container) return;
+
+  if (reperibilita.length === 0) {
+    container.innerHTML = `<div style="font-size:13px;color:#94a3b8;text-align:center;padding:16px 0">Nessun periodo reperibilità inserito</div>`;
+    return;
+  }
+
+  const sorted = [...reperibilita].sort((a, b) => a.dal.localeCompare(b.dal));
+  const today = new Date().toISOString().split('T')[0];
+
+  container.innerHTML = sorted.map(r => {
+    const tech = Object.values(CONFIG.tecnici).find(t => t.id === r.tecnicoId);
+    const isActive = r.dal <= today && today <= r.al;
+    const isPast = r.al < today;
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+        border:1.5px solid ${isActive ? '#6366f1' : isPast ? '#e2e8f0' : '#a5b4fc'};
+        background:${isActive ? '#eef2ff' : isPast ? '#f8fafc' : '#f5f3ff'};margin-bottom:8px;">
+        <div class="tech-badge" style="background:${tech?tech.colore:'#999'};width:30px;height:30px;font-size:10px;flex-shrink:0">${tech?tech.iniziali:'?'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#1e293b">${tech?tech.nome:'Tecnico'}</div>
+          <div style="font-size:12px;color:#6366f1;font-weight:600">📡 ${r.dal} → ${r.al}${r.ore ? ' · ' + r.ore + ' h' : ''}</div>
+          ${r.note ? `<div style="font-size:11px;color:#64748b;margin-top:2px">${r.note}</div>` : ''}
+        </div>
+        ${isActive ? '<span style="font-size:10px;font-weight:700;color:#4f46e5;background:#e0e7ff;padding:2px 7px;border-radius:20px;flex-shrink:0">IN CORSO</span>' : ''}
+        ${isPast ? '<span style="font-size:10px;font-weight:700;color:#94a3b8;background:#f1f5f9;padding:2px 7px;border-radius:20px;flex-shrink:0">PASSATO</span>' : ''}
+        <button onclick="eliminaReperibilita('${r.id}')" style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:18px;padding:0 4px;flex-shrink:0">×</button>
+      </div>`;
+  }).join('');
+}
+
+// Helper: ore reperibilità di un tecnico in un dato mese/anno
+function _getReperibilitaOre(techId, anno, mese) {
+  const primoDel = `${anno}-${String(mese).padStart(2,'0')}-01`;
+  const ultimoDel = `${anno}-${String(mese).padStart(2,'0')}-${new Date(anno, mese, 0).getDate().toString().padStart(2,'0')}`;
+  return reperibilita
+    .filter(r => r.tecnicoId === techId && r.dal <= ultimoDel && r.al >= primoDel)
+    .reduce((s, r) => s + (parseFloat(r.ore) || 0), 0);
 }
 
 async function saveAppuntamentiAndSync(appt) {
@@ -2994,6 +3162,7 @@ function logout() {
   document.getElementById('drive-banner').style.display = 'none';
   document.getElementById('admin-tech-section').style.display = 'none';
   document.getElementById('ferie-section').style.display = 'none';
+  document.getElementById('reperibilita-section').style.display = 'none';
   document.getElementById('ore-section').style.display = 'none';
   document.getElementById('gcal-section').style.display = 'none';
   document.getElementById('tech-cal-section').style.display = 'none';
@@ -4853,7 +5022,21 @@ function generaReportSENED() {
     totOreLavRow[3 + daysInMonth]     = grandTotal || '';
 
     // ── Sezioni manuali ──────────────────────────────────────
-    const reperRow   = makeRow('', "REPERIBILITA'", null);
+    // Reperibilità auto-calcolata dal database admin
+    const reperOreTotale = _getReperibilitaOre(tech.id, anno, mese);
+    const reperDaysData = {};
+    if (reperOreTotale > 0) {
+      // Distribuisce le ore nell'ultima cella non vuota per il totale
+      reperDaysData['__total__'] = reperOreTotale;
+    }
+    function makeRowWithTotal(codice, label, daysData, totalOverride) {
+      const row = makeRow(codice, label, daysData);
+      if (totalOverride !== undefined && totalOverride !== null) {
+        row[row.length - 1] = totalOverride || '';
+      }
+      return row;
+    }
+    const reperRow   = makeRowWithTotal('', "REPERIBILITA'", null, reperOreTotale || null);
     const straordRow = makeRow('', 'ORE DI STRAORDINARIO', null);
     const ferieRow   = makeRow('', 'FERIE / PERMESSI', null);
     const malattiaRow= makeRow('', 'MALATTIA', null);
@@ -5530,9 +5713,198 @@ function caricaDatiDemo() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   ELENCO RAPPORTINI
+═══════════════════════════════════════════════════════════ */
+function generaElencoRapportini() {
+  if (!window.XLSX) { toast('Libreria Excel non caricata'); return; }
+
+  const archivio = _deduplicaArchivio(JSON.parse(localStorage.getItem('mda_rapportini') || '[]'));
+  const dal = document.getElementById('elenco-rapp-dal').value || null;
+  const al  = document.getElementById('elenco-rapp-al').value || null;
+
+  const filtered = archivio.filter(r => {
+    if (!r.data) return false;
+    if (dal && r.data < dal) return false;
+    if (al  && r.data > al)  return false;
+    return true;
+  });
+
+  if (filtered.length === 0) { toast('Nessun rapportino nel periodo selezionato'); return; }
+
+  // Ordina per data poi per numero
+  const sorted = [...filtered].sort((a, b) => {
+    if ((a.data || '') !== (b.data || '')) return (a.data || '').localeCompare(b.data || '');
+    return (a.numero || 0) - (b.numero || 0);
+  });
+
+  const header = ['TIPO', 'N° DOCUMENTO', 'DATA', 'COD. CLIENTE', 'CLIENTE'];
+  const rows = [header];
+  for (const r of sorted) {
+    const cl = CLIENTI.find(c => c.id === r.cliente);
+    const nomeCliente = cl ? cl.nome.toUpperCase() : (r.cliente || '');
+    const codCliente = cl ? (cl.codice || cl.id).toUpperCase() : (r.cliente || '');
+    const dataFmt = r.data ? r.data.split('-').reverse().join('/') : '';
+    rows.push([
+      'd.d.t.',
+      _fmtRappNum(r.tecnico, r.numero),
+      dataFmt,
+      codCliente,
+      nomeCliente
+    ]);
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Larghezze colonne
+  ws['!cols'] = [{wch:8},{wch:20},{wch:12},{wch:12},{wch:45}];
+
+  // Stile intestazione e riga "documento" con sfondo giallo
+  // SheetJS community non supporta styling — generiamo comunque il file utile
+  XLSX.utils.book_append_sheet(wb, ws, 'Elenco Documenti');
+
+  const dtStr = dal && al ? `_${dal}_${al}` : dal ? `_dal_${dal}` : al ? `_al_${al}` : '';
+  XLSX.writeFile(wb, `Elenco_Rapportini${dtStr}.xlsx`);
+  toast(`✅ Elenco rapportini (${sorted.length} record) scaricato`);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ORE AD PERSONAM (ufficio paghe)
+═══════════════════════════════════════════════════════════ */
+function generaOreAdPersonam() {
+  if (!window.XLSX) { toast('Libreria Excel non caricata'); return; }
+
+  const anno = parseInt(document.getElementById('paghe-anno').value) || new Date().getFullYear();
+  const mese = parseInt(document.getElementById('paghe-mese').value) || (new Date().getMonth() + 1);
+  const MESI_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+                   'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const meseNome = MESI_IT[mese - 1];
+  const daysInMonth = new Date(anno, mese, 0).getDate();
+  const GG_SHORT = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+  const archivio = _deduplicaArchivio(JSON.parse(localStorage.getItem('mda_rapportini') || '[]'));
+  const tecniciList = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin);
+
+  // Intestazione comune festività nazionali approssimate
+  function isDomFest(d) {
+    const dow = new Date(anno, mese - 1, d).getDay();
+    return dow === 0; // domenica
+  }
+  function isSab(d) { return new Date(anno, mese - 1, d).getDay() === 6; }
+
+  const aoa = [];
+
+  // ── Riga titolo documento ─────────────────────────────────
+  const colCount = 4 + daysInMonth; // nome/cognome(merge), qualifica, 31 giorni, totale
+  function padRow(arr) { while (arr.length < colCount) arr.push(''); return arr; }
+
+  aoa.push(padRow(['Elenco dipendenti per compilazione presenze']));
+  aoa.push(padRow(['MDA SOLUTIONS SRL', '', 'VIA BUOZZI 83, 20097 SAN DONATO MILANESE (MI)']));
+  aoa.push(padRow(['', '', `Periodo: ${String(mese).padStart(2,'0')}/${anno}`, '', `Data stampa: ${new Date().toLocaleDateString('it-IT')}`]));
+  aoa.push(padRow([])); // riga separatore
+
+  for (const tech of tecniciList) {
+    const p = CONFIG_PAYROLL[tech.id] || {};
+
+    // Rapportini del tecnico nel mese
+    const rappTech = archivio.filter(r => {
+      if (r.tecnico !== tech.id || !r.data) return false;
+      const [y, m] = r.data.split('-');
+      return +y === anno && +m === mese;
+    });
+    const hoursPerDay = {};
+    for (const r of rappTech) {
+      const day = parseInt(r.data.split('-')[2]);
+      if (day) hoursPerDay[day] = (hoursPerDay[day] || 0) + (parseFloat(r.ore) || 0);
+    }
+
+    // Reperibilità e ferie dal database
+    const reperOre = _getReperibilitaOre(tech.id, anno, mese);
+    const primoDel = `${anno}-${String(mese).padStart(2,'0')}-01`;
+    const ultimoDel = `${anno}-${String(mese).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+    const ferieOre = (ferie || [])
+      .filter(f => f.tecnicoId === tech.id && f.dal <= ultimoDel && f.al >= primoDel)
+      .reduce((s, fPer) => {
+        // Conta giorni lavorativi nel range che rientrano nel mese
+        let d = new Date(Math.max(new Date(fPer.dal), new Date(primoDel)));
+        const fine = new Date(Math.min(new Date(fPer.al), new Date(ultimoDel)));
+        let gg = 0;
+        while (d <= fine) { if (d.getDay() !== 0 && d.getDay() !== 6) gg++; d.setDate(d.getDate()+1); }
+        return s + gg * 8;
+      }, 0);
+
+    // Riga intestazione tecnico
+    const cognome = p.cognome || tech.nome.split(' ').pop().toUpperCase();
+    const nomePag = p.nome || tech.nome.split(' ')[0].toUpperCase();
+    aoa.push(padRow([`${cognome} ${nomePag}`, p.qualifica || '', p.livello || '', `Ass. ${p.assunzione || ''}`, p.contratto || '']));
+
+    // Riga giorni della settimana
+    const ggRow = ['', '', '', ''];
+    for (let d = 1; d <= daysInMonth; d++) ggRow.push(GG_SHORT[new Date(anno, mese - 1, d).getDay()]);
+    aoa.push(ggRow);
+
+    // Riga numeri dei giorni
+    const numRow = ['', 'Giorno', '', ''];
+    for (let d = 1; d <= daysInMonth; d++) numRow.push(d);
+    numRow.push('Totale');
+    aoa.push(numRow);
+
+    // Riga ore ordinarie
+    const oreRow = ['', 'Ore ordinarie', '', ''];
+    let totOrd = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const v = hoursPerDay[d] || (isDomFest(d) || isSab(d) ? '' : '');
+      oreRow.push(v || (isDomFest(d) ? 'DOM' : isSab(d) ? 'SAB' : ''));
+      totOrd += parseFloat(v) || 0;
+    }
+    oreRow.push(totOrd || '');
+    aoa.push(oreRow);
+
+    // Riga straordinari (vuota — da compilare a mano)
+    const straordRow2 = ['', 'Straordinarie', '', ''];
+    for (let d = 0; d < daysInMonth; d++) straordRow2.push('');
+    straordRow2.push('');
+    aoa.push(straordRow2);
+
+    // Riga ferie/permessi
+    const ferRow = ['', 'Ferie / Permessi', '', ''];
+    for (let d = 0; d < daysInMonth; d++) ferRow.push('');
+    ferRow.push(ferieOre > 0 ? ferieOre : '');
+    aoa.push(ferRow);
+
+    // Riga malattia (vuota)
+    const malRow = ['', 'Malattia', '', ''];
+    for (let d = 0; d < daysInMonth; d++) malRow.push('');
+    malRow.push('');
+    aoa.push(malRow);
+
+    // Riga reperibilità
+    const repRow = ['', "Reperibilità", '', ''];
+    for (let d = 0; d < daysInMonth; d++) repRow.push('');
+    repRow.push(reperOre > 0 ? reperOre : '');
+    aoa.push(repRow);
+
+    aoa.push(padRow([])); // separatore tra tecnici
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Larghezze: nome, descrizione, 2 info, 31 giorni, totale
+  ws['!cols'] = [
+    {wch:22}, {wch:18}, {wch:8}, {wch:22},
+    ...Array(daysInMonth).fill({wch:5}),
+    {wch:8}
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, `Presenze ${meseNome} ${anno}`);
+  XLSX.writeFile(wb, `OreAdPersonam_${meseNome}_${anno}.xlsx`);
+  toast(`✅ Ore ad personam ${meseNome} ${anno} scaricato`);
+}
+
+/* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.58'; // new: cancellazione rapportini (lista + eliminazione Drive JSON)
+const _APP_VERSION = '2.59'; // new: reperibilità admin, elenco rapportini, ore ad personam
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
