@@ -570,6 +570,7 @@
         <p style="font-size:14px;font-weight:700;margin-bottom:4px">🔄 Sincronizza presenze da Drive</p>
         <p style="font-size:12px;color:var(--sub);margin-bottom:10px">Scarica i dati dei rapportini caricati dai tecnici su Drive e li aggiunge al database locale. Poi genera il report presenze o il riepilogo ore. <strong>Prima di usarlo chiedi ai tecnici di premere "Carica i miei dati su Drive" nel loro pannello.</strong></p>
         <button id="btn-sync-presenze" class="btn-sm primary" onclick="sincronizzaPresenzeDrive()" style="font-size:13px;padding:9px 16px">🔄 Sincronizza da Drive</button>
+        <span id="last-sync-label" style="font-size:11px;color:#94a3b8;margin-left:10px"></span>
       </div>
       <div class="card" style="padding:14px;margin-bottom:10px;border-left:3px solid #f59e0b">
         <p style="font-size:14px;font-weight:700;margin-bottom:4px">🧹 Pulizia archivio rapportini</p>
@@ -860,9 +861,9 @@
       <div onclick="document.getElementById('rapp-lista-inner').style.display=document.getElementById('rapp-lista-inner').style.display==='none'?'block':'none';this.querySelector('.rapp-lista-arr').textContent=document.getElementById('rapp-lista-inner').style.display==='none'?'▶':'▼'"
            style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none">
         <span style="font-size:13px;font-weight:700;color:#475569">📋 Rapportini inviati</span>
-        <span class="rapp-lista-arr" style="font-size:11px;color:#94a3b8">▶</span>
+        <span class="rapp-lista-arr" style="font-size:11px;color:#94a3b8">▼</span>
       </div>
-      <div id="rapp-lista-inner" style="display:none;border-top:1px solid #e2e8f0">
+      <div id="rapp-lista-inner" style="display:block;border-top:1px solid #e2e8f0">
         <div id="rapp-lista-items" style="padding:4px 0"></div>
       </div>
     </div>
@@ -1113,7 +1114,7 @@ const CONFIG = {
     '3333': { id: 'brigen',  nome: 'Brigen',           iniziali: 'BR', colore: '#f59e0b', email: 'brigeltheboss@gmail.com' },
     '4444': { id: 'senny',   nome: 'Senny Fasil',      iniziali: 'SF', colore: '#8b5cf6', email: 'sened.balo@gmail.com' },
     '5555': { id: 'teo',     nome: 'Teo',              iniziali: 'TE', colore: '#ef4444', email: 'mateogjyli@gmail.com' },
-    '2021': { id: 'admin',   nome: 'Marco De Cesare',  iniziali: 'MC', colore: '#1e40af', isAdmin: true, email: 'mdasolutions.operativo@gmail.com' }
+    '2021': { id: 'marco',   nome: 'Marco De Cesare',  iniziali: 'MC', colore: '#0ea5e9', isAdmin: true, isAlsoTech: true, email: 'decmarprof@gmail.com' }
   }
 };
 
@@ -1147,6 +1148,7 @@ const GCAL = {
     brigen: 'd13875def2684b17d689364e6bf2bf2b7c0e013b163e4203e24bcdeb77262891@group.calendar.google.com',
     senny:  'e712e9fbb7daff07ee1bfb56cbdb1942bec5afda2167dc688b51782a4468cef1@group.calendar.google.com',
     teo:    'f3f3de0f29df7605a6a14b2b0a9cf95427b00fa9d7d7c7e29ee9ea2e66ae6461@group.calendar.google.com',
+    marco:  'd4598e0999d50dc2e4f703fb32f6818337b5e300ad107c4c33561def318381fc@group.calendar.google.com',
   }
 };
 
@@ -1370,8 +1372,8 @@ function initMain() {
     document.getElementById('paghe-anno').value = _now2.getFullYear();
   }
 
-  // Non-admin: mostra sezione presenze personali + sync Calendar + aggiornamento app
-  if (!currentTech.isAdmin) {
+  // Non-admin (o admin+tech): mostra sezione presenze personali + sync Calendar + aggiornamento app
+  if (!currentTech.isAdmin || currentTech.isAlsoTech) {
     document.getElementById('presenze-section').style.display = 'block';
     document.getElementById('tech-cal-section').style.display = 'block';
     document.getElementById('tech-update-section').style.display = 'block';
@@ -1387,8 +1389,8 @@ function initMain() {
     if (!_driveToken && _gisReady) _driveTryRestore();
   }
 
-  // Se non admin, preseleziona il tecnico nei form
-  if (!currentTech.isAdmin) {
+  // Se non admin (o admin+tech), preseleziona il tecnico nei form
+  if (!currentTech.isAdmin || currentTech.isAlsoTech) {
     const sel1 = document.getElementById('int-tecnico');
     const sel2 = document.getElementById('rapp-tecnico');
     for (let opt of sel1.options) if (opt.value === currentTech.id) { opt.selected = true; break; }
@@ -1425,7 +1427,7 @@ function populateTecniciSelect(selId) {
   sel.innerHTML = '';
   if (currentTech.isAdmin) {
     sel.innerHTML = '<option value="">— Seleziona tecnico —</option>';
-    Object.values(CONFIG.tecnici).filter(t => !t.isAdmin).forEach(t => {
+    Object.values(CONFIG.tecnici).filter(t => !t.isAdmin || t.isAlsoTech).forEach(t => {
       sel.innerHTML += `<option value="${t.id}">${t.nome}</option>`;
     });
   } else {
@@ -1451,7 +1453,7 @@ function showTab(tab) {
   document.getElementById('tab-' + tab).style.display = 'block';
   document.getElementById('nav-' + tab).classList.add('active');
 
-  if (tab === 'home') renderHome();
+  if (tab === 'home') { renderHome(); _aggiornaLabelUltimaSync(); }
   if (tab === 'agenda') renderAgenda();
   if (tab === 'rapportino') {
     // Canvas è 0x0 se la tab non era visibile — ridimensiona dopo che il DOM è visibile
@@ -1513,7 +1515,7 @@ let adminTechFilter = null;
 
 function renderAdminTechList() {
   const el = document.getElementById('admin-tech-list');
-  el.innerHTML = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin).map(t => {
+  el.innerHTML = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin || t.isAlsoTech).map(t => {
     const today = new Date().toISOString().split('T')[0];
     const countOggi = getAllAppts().filter(a => a.tecnico === t.id && a.data === today).length;
     const countTot = getAllAppts().filter(a => a.tecnico === t.id).length;
@@ -1602,7 +1604,7 @@ function renderAgendaList() {
 }
 
 function renderSchedulerAdmin(dateStr) {
-  const technicians = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin);
+  const technicians = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin || t.isAlsoTech);
   const allAppts = getAllAppts().filter(a => a.data === dateStr);
 
   // ── Landscape vs portrait ────────────────────────────────────
@@ -1712,6 +1714,23 @@ function renderSchedulerAdmin(dateStr) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   HELPER: controlla se esiste già un rapportino per un appuntamento
+   Usato per bloccare la creazione di un secondo rapportino e
+   per mostrare le info del rapportino già inviato nella card.
+═══════════════════════════════════════════════════════════ */
+function _rappEsistentePerAppt(a) {
+  if (!a || !a.tecnico || !a.data) return null;
+  const commessa = (a.commessa || a.clienteId || '').trim();
+  if (!commessa) return null;
+  const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
+  return archivio.find(r =>
+    r.tecnico === a.tecnico &&
+    r.data === a.data &&
+    (r.commessa === commessa || r.cliente === commessa || r.cliente === a.clienteId)
+  ) || null;
+}
+
+/* ═══════════════════════════════════════════════════════════
    CARD APPUNTAMENTO
 ═══════════════════════════════════════════════════════════ */
 function renderApptCard(a) {
@@ -1735,6 +1754,15 @@ function renderApptCard(a) {
       .filter(Boolean)
       .filter((t, i, arr) => arr.findIndex(u => u.id === t.id) === i); // dedup
   }
+
+  // Verifica se esiste già un rapportino per questo appuntamento
+  const _rappEx = _rappEsistentePerAppt(a);
+  const _rappBtn = _rappEx
+    ? `<button class="btn-sm success" style="opacity:.85;cursor:default;font-size:11px" disabled title="Rapportino già inviato — non puoi crearne un secondo">` +
+      `✅ ${_fmtRappNum(_rappEx.tecnico, _rappEx.numero)} (${_rappEx.ore}h)` +
+      (_rappEx.driveUrl ? ` <a href="${_rappEx.driveUrl}" target="_blank" onclick="event.stopPropagation()" style="color:#fff;text-decoration:underline;font-size:11px">↗ PDF</a>` : '') +
+      `</button>`
+    : `<button class="btn-sm amber" onclick="apriRapportinoDa('${a.id}')">📄 Rapportino</button>`;
 
   return `<div class="appt-card ${isExtra?'extra':''} ${a.completato?'completed':''}" id="appt-${a.id}"
       onclick="toggleApptDetail('${a.id}')" style="cursor:pointer;user-select:none">
@@ -1770,7 +1798,7 @@ function renderApptCard(a) {
           <button class="btn-sm ${a.completato?'success':'primary'}" onclick="toggleCompletato('${a.id}')">
             ${a.completato ? '✓ Completato' : '○ Segna fatto'}
           </button>
-          <button class="btn-sm amber" onclick="apriRapportinoDa('${a.id}')">📄 Rapportino</button>
+          ${_rappBtn}
           <button class="btn-sm" onclick="openMaps('${a.id}')"
             style="background:#10b981;color:#fff;border-color:#10b981">🧭 Naviga</button>
         </div>
@@ -1812,6 +1840,15 @@ function openApptModal(id) {
       .filter((t, i, arr) => arr.findIndex(u => u.id === t.id) === i);
   }
 
+  // Verifica rapportino già esistente per questo appuntamento
+  const _modalRappEx = _rappEsistentePerAppt(a);
+  const _modalRappBtn = _modalRappEx
+    ? `<button class="btn-sm success" style="opacity:.85;cursor:default;font-size:11px" disabled title="Rapportino già inviato">` +
+      `✅ ${_fmtRappNum(_modalRappEx.tecnico, _modalRappEx.numero)} (${_modalRappEx.ore}h)` +
+      (_modalRappEx.driveUrl ? ` <a href="${_modalRappEx.driveUrl}" target="_blank" onclick="event.stopPropagation()" style="color:#fff;text-decoration:underline;font-size:11px">↗ PDF</a>` : '') +
+      `</button>`
+    : `<button class="btn-sm amber" onclick="apriRapportinoDa('${a.id}');closeApptModal()">📄 Rapportino</button>`;
+
   document.getElementById('appt-modal-content').innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
       <div class="tech-badge" style="background:${tech?tech.colore:'#999'};width:44px;height:44px;font-size:14px;flex-shrink:0">${tech?tech.iniziali:'?'}</div>
@@ -1840,7 +1877,7 @@ function openApptModal(id) {
       <button class="btn-sm ${a.completato?'success':'primary'}" onclick="toggleCompletato('${a.id}');renderAgendaList();closeApptModal()">
         ${a.completato ? '✓ Completato' : '○ Segna fatto'}
       </button>
-      <button class="btn-sm amber" onclick="apriRapportinoDa('${a.id}');closeApptModal()">📄 Rapportino</button>
+      ${_modalRappBtn}
       <button class="btn-sm" onclick="openMaps('${a.id}')" style="background:#10b981;color:#fff;border-color:#10b981">🧭 Naviga</button>
       ${currentTech.isAdmin ? `<button class="btn-sm" onclick="editAppt('${a.id}');closeApptModal()" style="background:#6366f1;color:#fff;border-color:#6366f1">✏️ Modifica</button>
       <button class="btn-sm" onclick="if(confirm('Eliminare questo intervento?'))deleteAppt('${a.id}');closeApptModal()" style="background:#ef4444;color:#fff;border-color:#ef4444">🗑 Elimina</button>` : ''}
@@ -2140,7 +2177,7 @@ function toggleSquadra() {
 function renderSquadraTecnici() {
   const mainTechId = document.getElementById('int-tecnico').value;
   const container  = document.getElementById('int-squadra-tecnici');
-  const lista = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin);
+  const lista = Object.values(CONFIG.tecnici).filter(t => !t.isAdmin || t.isAlsoTech);
   container.innerHTML = lista.map(t => `
     <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
       border:1.5px solid ${t.id === mainTechId ? '#c7d2fe' : 'var(--border)'};
@@ -2653,24 +2690,36 @@ function renderRappListaRecenti() {
   try {
     const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
     const techId = currentTech?.id;
-    const miei = archivio
+    // Mostra rapportini degli ultimi 7 giorni (o tutti se < 7)
+    const cutoff7gg = new Date();
+    cutoff7gg.setDate(cutoff7gg.getDate() - 7);
+    const cutoffStr = cutoff7gg.toISOString().split('T')[0];
+    const tuttiMiei = archivio
       .filter(r => !techId || r.tecnico === techId)
-      .sort((a, b) => (b.creato || b.data || '').localeCompare(a.creato || a.data || ''))
-      .slice(0, 20);
+      .sort((a, b) => (b.creato || b.data || '').localeCompare(a.creato || a.data || ''));
+    // Prima tenta filtro 7 giorni; se vuoto mostra gli ultimi 20 qualunque data
+    const miei7gg = tuttiMiei.filter(r => r.data >= cutoffStr);
+    const miei = miei7gg.length > 0 ? miei7gg : tuttiMiei.slice(0, 20);
+    const labelPeriodo = miei7gg.length > 0 ? 'ultimi 7 giorni' : 'ultimi 20';
     if (!miei.length) {
       el.innerHTML = '<div style="padding:12px 14px;font-size:12px;color:#94a3b8;text-align:center">Nessun rapportino registrato</div>';
       return;
     }
-    el.innerHTML = miei.map(r => {
+    el.innerHTML = `<div style="padding:6px 14px 2px;font-size:11px;color:#94a3b8;font-style:italic">${miei.length} rapportino/i — ${labelPeriodo}</div>` +
+      miei.map(r => {
       const cliente = (CLIENTI.find(c => c.id === r.cliente) || {}).nome || r.cliente || '?';
       const data = r.data ? r.data.split('-').reverse().join('/') : '?';
-      const num = r.numero ? '#' + String(r.numero).padStart(4,'0') : '';
+      const num = r.numero != null ? _fmtRappNum(r.tecnico, r.numero) : '';
+      const driveLink = r.driveUrl
+        ? `<a href="${r.driveUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:#6366f1;text-decoration:none;background:#eef2ff;border-radius:5px;padding:3px 8px;white-space:nowrap">↗ PDF</a>`
+        : '';
       return `<div id="rapp-item-${r.id}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #f1f5f9;gap:8px">
         <div style="min-width:0;flex:1">
           <div style="font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cliente}</div>
-          <div style="font-size:11px;color:#64748b">${data} · ${r.ore || 0}h ${num ? '· '+num : ''}</div>
+          <div style="font-size:11px;color:#64748b">${data} · ${r.ore || 0}h${num ? ' · '+num : ''}</div>
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0" id="rapp-item-btns-${r.id}">
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0" id="rapp-item-btns-${r.id}">
+          ${driveLink}
           <button onclick="rappConfirmDelete('${r.id}')" style="background:#fee2e2;color:#dc2626;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer">🗑</button>
         </div>
       </div>`;
@@ -3008,7 +3057,8 @@ async function generaPDF() {
   }
 
   // ─── SEZIONE 5: FIRME ────────────────────────────────
-  if (y + 68 > PH - M) { doc.addPage(); y = M; }
+  // firmaH(46) + drawSecHeader(10) + gap(2) = 58mm effettivi; soglia 60 lascia 2mm margine
+  if (y + 60 > PH - M) { doc.addPage(); y = M; }
   const s5end = drawSecHeader(5, 'Firme', M, y);
   y = s5end + 2;
   const firmaH = 46;
@@ -3797,6 +3847,12 @@ function _driveTokenInvalid(reason) {
 async function uploadRapportinoDrive(pdfBlob, filename, _retried = false) {
   if (!_driveToken) return; // non connesso, skip silenzioso
   if (!GCAL.DRIVE_FOLDER_ID) return; // non configurato
+  // Guard: non caricare un PDF vuoto/corrotto (evita stub da 0 byte su Drive)
+  if (!pdfBlob || pdfBlob.size < 1000) {
+    console.warn('uploadRapportinoDrive: blob troppo piccolo o nullo', pdfBlob?.size);
+    toast('⚠️ PDF non valido (vuoto) — rapportino salvato solo localmente');
+    return;
+  }
 
   // Upload in due step per evitare problemi con FormData/multipart su alcuni browser mobile:
   //   Step 1: crea il file con i metadati (JSON) → ottieni fileId
@@ -4201,6 +4257,32 @@ function _deduplicaArchivio(archivio) {
 /* ═══════════════════════════════════════════════════════════
    PULIZIA DUPLICATI ARCHIVIO (admin)
 ═══════════════════════════════════════════════════════════ */
+// ── Aggiorna la label "ultima sincronizzazione" nella sezione Ore&Presenze ──
+function _aggiornaLabelUltimaSync() {
+  const el = document.getElementById('last-sync-label');
+  if (!el) return;
+  const ts = localStorage.getItem('mda_last_sync');
+  if (!ts) { el.textContent = 'Mai sincronizzato'; el.style.color = '#ef4444'; return; }
+  const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+  const label = diff < 2 ? 'poco fa' : diff < 60 ? diff + ' min fa' : Math.floor(diff/60) + 'h fa';
+  el.textContent = 'Ultima sync: ' + label;
+  el.style.color = diff > 120 ? '#f59e0b' : '#10b981';
+}
+
+// ── Warning se sincronizzazione non recente, prima di generare report ──────
+function _warnIfSyncStale() {
+  const ts = localStorage.getItem('mda_last_sync');
+  if (!ts) {
+    toast('⚠️ Attenzione: non hai mai sincronizzato da Drive. I dati potrebbero essere incompleti.\nPrima di generare, premi "🔄 Sincronizza da Drive".');
+    return;
+  }
+  const minFa = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+  if (minFa > 120) {
+    const hFa = Math.floor(minFa / 60);
+    toast(`⚠️ Ultima sincronizzazione ${hFa}h fa. Per dati aggiornati premi prima "🔄 Sincronizza da Drive".`);
+  }
+}
+
 function _pulisciDuplicatiArchivio() {
   const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
   const prima = archivio.length;
@@ -4345,6 +4427,9 @@ async function sincronizzaPresenzeDrive(_retried = false) {
     const rimossiDedup = archivio.length - archivioDedup.length;
     localStorage.setItem('mda_rapportini', JSON.stringify(archivioDedup));
     const totMsg = rimossiDedup > 0 ? ` · 🧹 ${rimossiDedup} duplicati rimossi` : '';
+    // Salva timestamp ultima sincronizzazione (usato per warning nelle funzioni di report)
+    localStorage.setItem('mda_last_sync', new Date().toISOString());
+    _aggiornaLabelUltimaSync();
     toast(nuovi > 0
       ? `✅ Sincronizzazione OK: ${nuovi} nuovi rapportini (${archivioDedup.length} totali)${totMsg}`
       : `✅ Già aggiornato — nessun nuovo rapportino (${archivioDedup.length} in archivio)${totMsg}`);
@@ -4828,6 +4913,7 @@ async function techCalSync() {
    ESPORTA ORE IN EXCEL
 ═══════════════════════════════════════════════════════════ */
 function esportaOreExcel() {
+  _warnIfSyncStale(); // avviso se sincronizzazione non recente
   const archivio = _deduplicaArchivio(JSON.parse(localStorage.getItem('mda_rapportini') || '[]'));
   if (archivio.length === 0) { toast('Nessun rapportino trovato nell\'archivio'); return; }
 
@@ -4889,6 +4975,7 @@ function esportaOreExcel() {
    REPORT PRESENZE SENED
 ═══════════════════════════════════════════════════════════ */
 function generaReportSENED() {
+  _warnIfSyncStale(); // avviso se sincronizzazione non recente
   const anno = parseInt(document.getElementById('sened-anno').value) || new Date().getFullYear();
   const mese = parseInt(document.getElementById('sened-mese').value) || (new Date().getMonth() + 1);
   if (!window.XLSX) { toast('Libreria Excel non caricata'); return; }
@@ -5144,7 +5231,7 @@ function generaReportSENED() {
    PRESENZE PERSONALI (singolo tecnico)
 ═══════════════════════════════════════════════════════════ */
 function generaPresenzeMie() {
-  if (!currentTech || currentTech.isAdmin) { toast('Funzione disponibile per i tecnici'); return; }
+  if (!currentTech || (currentTech.isAdmin && !currentTech.isAlsoTech)) { toast('Funzione disponibile per i tecnici'); return; }
   const anno = parseInt(document.getElementById('mie-presenze-anno').value) || new Date().getFullYear();
   const mese = parseInt(document.getElementById('mie-presenze-mese').value) || (new Date().getMonth() + 1);
   if (!window.XLSX) { toast('Libreria Excel non caricata'); return; }
@@ -5904,7 +5991,7 @@ function generaOreAdPersonam() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.59'; // new: reperibilità admin, elenco rapportini, ore ad personam
+const _APP_VERSION = '2.62'; // new: blocco rapportino duplicato, lista recenti espansa+link Drive, warning sync presenze
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
