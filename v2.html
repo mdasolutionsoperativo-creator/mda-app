@@ -566,6 +566,15 @@
     <!-- Admin: Conteggio ore e presenze -->
     <div id="ore-section" style="display:none;margin-top:16px">
       <p class="section-title">⏱ Ore &amp; Presenze</p>
+      <!-- Banner avviso sync stale — mostrato/nascosto da _aggiornaLabelUltimaSync() -->
+      <div id="sync-stale-banner" style="display:none;padding:12px 14px;background:#fef3c7;border:1.5px solid #f59e0b;border-radius:12px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px;flex-shrink:0">⚠️</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#92400e" id="sync-stale-msg">Sincronizza prima di generare report</div>
+          <div style="font-size:11px;color:#b45309;margin-top:2px">I dati di questo dispositivo potrebbero essere diversi da quelli dell'altro admin. Clicca Sincronizza per allinearli.</div>
+        </div>
+        <button onclick="sincronizzaPresenzeDrive()" style="flex-shrink:0;background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🔄 Sincronizza</button>
+      </div>
       <div class="card" style="padding:14px;margin-bottom:10px;border-left:3px solid #3b82f6">
         <p style="font-size:14px;font-weight:700;margin-bottom:4px">🔄 Sincronizza presenze da Drive</p>
         <p style="font-size:12px;color:var(--sub);margin-bottom:10px">Scarica i dati dei rapportini caricati dai tecnici su Drive e li aggiunge al database locale. Poi genera il report presenze o il riepilogo ore. <strong>Prima di usarlo chiedi ai tecnici di premere "Carica i miei dati su Drive" nel loro pannello.</strong></p>
@@ -1774,7 +1783,10 @@ function renderApptCard(a) {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px">
         <div style="min-width:0">
           <div class="appt-client">${cliente.nome}</div>
-          <div class="appt-type">${a.tipo_intervento||'Manutenzione'} ${isExtra?'• Extra':''}</div>
+          <div class="appt-type" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span>${a.tipo_intervento||'Manutenzione'} ${isExtra?'• Extra':''}</span>
+            ${_rappEx ? `<span style="font-size:11px;font-weight:700;color:#059669;background:#dcfce7;border:1px solid #bbf7d0;border-radius:5px;padding:1px 6px;white-space:nowrap">✅ ${_rappEx.ore}h</span>` : ''}
+          </div>
         </div>
         <svg id="appt-arrow-${a.id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
           style="width:18px;height:18px;flex-shrink:0;color:#94a3b8;transition:transform .2s;margin-top:3px">
@@ -2046,6 +2058,15 @@ function apriRapportinoDa(id) {
   if (!a) return;
 
   showTab('rapportino');
+
+  // Chiudi la lista rapportini recenti per mostrare subito il form (non il log)
+  const listaInner = document.getElementById('rapp-lista-inner');
+  const listaArr = document.querySelector('#rapp-lista-box .rapp-lista-arr');
+  if (listaInner) listaInner.style.display = 'none';
+  if (listaArr) listaArr.textContent = '▶';
+  // Scrolla al top del tab così il form è subito visibile
+  const tabRapp = document.getElementById('tab-rapportino');
+  if (tabRapp) tabRapp.scrollTop = 0;
 
   // Tecnico: se admin apre rapportino di un altro tecnico, imposta quel tecnico
   if (currentTech.isAdmin && a.tecnico) {
@@ -4260,13 +4281,27 @@ function _deduplicaArchivio(archivio) {
 // ── Aggiorna la label "ultima sincronizzazione" nella sezione Ore&Presenze ──
 function _aggiornaLabelUltimaSync() {
   const el = document.getElementById('last-sync-label');
-  if (!el) return;
+  const banner = document.getElementById('sync-stale-banner');
+  const bannerMsg = document.getElementById('sync-stale-msg');
   const ts = localStorage.getItem('mda_last_sync');
-  if (!ts) { el.textContent = 'Mai sincronizzato'; el.style.color = '#ef4444'; return; }
+  if (!ts) {
+    if (el) { el.textContent = 'Mai sincronizzato'; el.style.color = '#ef4444'; }
+    if (banner) banner.style.display = 'flex';
+    if (bannerMsg) bannerMsg.textContent = '⚠️ Non hai mai sincronizzato da Drive';
+    return;
+  }
   const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
   const label = diff < 2 ? 'poco fa' : diff < 60 ? diff + ' min fa' : Math.floor(diff/60) + 'h fa';
-  el.textContent = 'Ultima sync: ' + label;
-  el.style.color = diff > 120 ? '#f59e0b' : '#10b981';
+  if (el) { el.textContent = 'Ultima sync: ' + label; el.style.color = diff > 120 ? '#f59e0b' : '#10b981'; }
+  // Mostra banner solo se sync > 2 ore fa
+  if (banner) {
+    if (diff > 120) {
+      banner.style.display = 'flex';
+      if (bannerMsg) bannerMsg.textContent = `Ultima sincronizzazione ${Math.floor(diff/60)}h fa`;
+    } else {
+      banner.style.display = 'none';
+    }
+  }
 }
 
 // ── Warning se sincronizzazione non recente, prima di generare report ──────
@@ -5991,7 +6026,7 @@ function generaOreAdPersonam() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.62'; // new: blocco rapportino duplicato, lista recenti espansa+link Drive, warning sync presenze
+const _APP_VERSION = '2.63'; // new: form rapportino visibile subito da agenda, badge ore card collassata, banner sync stale
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
