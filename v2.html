@@ -2933,50 +2933,50 @@ async function generaPDF() {
 
   // ─── RIGA 1: DATA | TECNICO | ORARIO | ORE ───────────
   const bw1 = (CW - 9) / 4;
-  drawInfoBox('DATA INTERVENTO', M, y, bw1, 18);
-  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
-  doc.text(dataFmt, M + 3, y + 11, { maxWidth: bw1 - 6 });
-  if (dowFmt) { doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139); doc.text(dowFmt, M + 3, y + 16); }
+  drawInfoBox('DATA INTERVENTO', M, y, bw1, 15);
+  doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(dataFmt, M + 3, y + 10, { maxWidth: bw1 - 6 });
+  if (dowFmt) { doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139); doc.text(dowFmt, M + 3, y + 13.5); }
 
-  drawInfoBox('TECNICO', M + bw1 + 3, y, bw1, 18);
-  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
-  doc.text(tecnico ? tecnico.nome : '-', M + bw1 + 6, y + 11, { maxWidth: bw1 - 6 });
+  drawInfoBox('TECNICO', M + bw1 + 3, y, bw1, 15);
+  doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(tecnico ? tecnico.nome : '-', M + bw1 + 6, y + 10, { maxWidth: bw1 - 6 });
 
-  drawInfoBox('ORARIO', M + (bw1 + 3) * 2, y, bw1, 18);
+  drawInfoBox('ORARIO', M + (bw1 + 3) * 2, y, bw1, 15);
   const orario = (oraInizio || '--:--') + (oraFine ? ' – ' + oraFine : '');
-  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
-  doc.text(orario, M + (bw1 + 3) * 2 + 3, y + 11, { maxWidth: bw1 - 6 });
+  doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(orario, M + (bw1 + 3) * 2 + 3, y + 10, { maxWidth: bw1 - 6 });
 
   // ORE TOTALI evidenziato
-  drawInfoBox('ORE TOTALI', M + (bw1 + 3) * 3, y, bw1, 18, true);
+  drawInfoBox('ORE TOTALI', M + (bw1 + 3) * 3, y, bw1, 15, true);
   const oreDisplay = ore ? parseFloat(ore).toFixed(1) + ' h' : '-';
-  doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
-  doc.text(oreDisplay, M + (bw1 + 3) * 3 + bw1 / 2, y + 13, { align: 'center' });
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+  doc.text(oreDisplay, M + (bw1 + 3) * 3 + bw1 / 2, y + 11, { align: 'center' });
 
-  y += 22;
+  y += 19;
 
   // ─── RIGA 2: CLIENTE | COMMESSA | TIPO ────────────────
   const bw2a = CW * 0.50; // 50% cliente
   const bw2b = CW * 0.18; // 18% commessa
   const bw2c = CW - bw2a - bw2b - 6; // tipo intervento
-  drawInfoBox('CLIENTE', M, y, bw2a, 18);
-  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
-  doc.text(cliente ? cliente.nome : '-', M + 3, y + 11, { maxWidth: bw2a - 6 });
+  drawInfoBox('CLIENTE', M, y, bw2a, 15);
+  doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(cliente ? cliente.nome : '-', M + 3, y + 10, { maxWidth: bw2a - 6 });
 
-  drawInfoBox('COMMESSA', M + bw2a + 3, y, bw2b, 18);
-  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
-  doc.text(commessa || '-', M + bw2a + 6, y + 11, { maxWidth: bw2b - 6 });
+  drawInfoBox('COMMESSA', M + bw2a + 3, y, bw2b, 15);
+  doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(commessa || '-', M + bw2a + 6, y + 10, { maxWidth: bw2b - 6 });
 
-  drawInfoBox('TIPO INTERVENTO', M + bw2a + bw2b + 6, y, bw2c, 18);
+  drawInfoBox('TIPO INTERVENTO', M + bw2a + bw2b + 6, y, bw2c, 15);
   const tipoLabel = tipoEl ? tipoEl.dataset.val : '-';
   const tipoFull = tipoLabel === 'MAN. ORDIN.' ? 'Manutenzione ordinaria' :
                    tipoLabel === 'MAN. STRAORD.' ? 'Manutenzione straordinaria' :
                    tipoLabel === 'INT. TECNICO' ? 'Intervento tecnico' :
                    tipoLabel === 'ASS. TECNICA' ? 'Assistenza tecnica' : tipoLabel;
-  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
-  doc.text(tipoFull, M + bw2a + bw2b + 9, y + 11, { maxWidth: bw2c - 6 });
+  doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+  doc.text(tipoFull, M + bw2a + bw2b + 9, y + 10, { maxWidth: bw2c - 6 });
 
-  y += 22;
+  y += 19;
 
   // Indirizzo + tipo badge
   const indir = indirizzo || (cliente && cliente.indirizzo) || '';
@@ -2990,81 +2990,84 @@ async function generaPDF() {
   const s1end = drawSecHeader(1, 'Descrizione lavori eseguiti', M, y);
   y = s1end + 2;
   const linesLav = doc.splitTextToSize(lavori || '-', CW - 18);
-  const shLav = Math.max(14, linesLav.length * 5 + 8);
+  const shLav = Math.max(10, linesLav.length * 4.5 + 6);
   doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
   doc.roundedRect(M, y, CW, shLav, 2, 2, 'FD');
   doc.setFontSize(9.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
   doc.text(linesLav, M + 6, y + 6);
   y += shLav + 5;
 
-  // ─── SEZIONE 2: INDICAZIONI (se presenti) ────────────
-  if (noteIndicazioni) {
-    const s2end = drawSecHeader(2, 'Indicazioni intervento', M, y);
-    y = s2end + 2;
-    const linesNote = doc.splitTextToSize(noteIndicazioni, CW - 18);
-    const shNote = Math.max(14, linesNote.length * 5 + 8);
-    doc.setFillColor(219, 234, 254); doc.setDrawColor(147, 197, 253);
-    doc.roundedRect(M, y, CW, shNote, 2, 2, 'FD');
-    doc.setFontSize(9.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
-    doc.text(linesNote, M + 6, y + 6);
-    y += shNote + 5;
-  }
-
-  // ─── SEZIONI 3 + 4 (AFFIANCATE) ──────────────────────
+  // ─── SEZIONI 2 + 3 (AFFIANCATE) ─────────────────────
   const halfW = (CW - 5) / 2;
-  const matLines = materiali ? doc.splitTextToSize(materiali, halfW - 18) : [];
-  const sec34H = Math.max(matLines.length * 5 + 16, 36);
-
-  // Check page break
-  if (y + sec34H + 75 > PH - M) { doc.addPage(); y = M; }
-
-  const s3end = drawSecHeader(3, 'Materiali utilizzati', M, y);
-  const s4end = drawSecHeader(4, 'Stato impianto a fine intervento', M + halfW + 5, y);
-  y = Math.max(s3end, s4end) + 2;
-
-  // Box 3
-  doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(M, y, halfW, sec34H, 2, 2, 'FD');
-  if (!materiali) {
-    doc.setFontSize(9); doc.setFont('helvetica', 'italic'); doc.setTextColor(148, 163, 184);
-    doc.text('Nessun materiale utilizzato', M + 6, y + 11);
+  const matLines = materiali ? doc.splitTextToSize(materiali, halfW - 14) : [];
+  if (noteIndicazioni) {
+    const linesNote = doc.splitTextToSize(noteIndicazioni, halfW - 14);
+    const sec23H = Math.max(10, Math.max(linesNote.length, matLines.length) * 4.5 + 8, 18);
+    const s2end = drawSecHeader(2, 'Indicazioni intervento', M, y);
+    const s3end_a = drawSecHeader(3, 'Materiali utilizzati', M + halfW + 5, y);
+    y = Math.max(s2end, s3end_a) + 2;
+    // Box 2 (azzurro)
+    doc.setFillColor(219, 234, 254); doc.setDrawColor(147, 197, 253);
+    doc.roundedRect(M, y, halfW, sec23H, 2, 2, 'FD');
+    doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
+    doc.text(linesNote, M + 5, y + 6);
+    // Box 3
+    doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(M + halfW + 5, y, halfW, sec23H, 2, 2, 'FD');
+    if (!materiali) {
+      doc.setFontSize(8.5); doc.setFont('helvetica', 'italic'); doc.setTextColor(148, 163, 184);
+      doc.text('Nessun materiale utilizzato', M + halfW + 10, y + sec23H / 2 + 1);
+    } else {
+      doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
+      doc.text(matLines, M + halfW + 10, y + 6);
+    }
+    y += sec23H + 5;
   } else {
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
-    doc.text(matLines, M + 6, y + 8);
+    // Solo sezione 3 (full width)
+    const s3end_b = drawSecHeader(3, 'Materiali utilizzati', M, y);
+    y = s3end_b + 2;
+    const sec3H = Math.max(10, matLines.length * 4.5 + 6, 14);
+    doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(M, y, CW, sec3H, 2, 2, 'FD');
+    if (!materiali) {
+      doc.setFontSize(8.5); doc.setFont('helvetica', 'italic'); doc.setTextColor(148, 163, 184);
+      doc.text('Nessun materiale utilizzato', M + 6, y + 9);
+    } else {
+      doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 41, 59);
+      doc.text(matLines, M + 6, y + 6);
+    }
+    y += sec3H + 5;
   }
 
-  // Box 4
+  // ─── SEZIONE 4: STATO IMPIANTO (orizzontale, unica riga) ─
+  const s4end = drawSecHeader(4, 'Stato impianto a fine intervento', M, y);
+  y = s4end + 2;
+  const sec4H = 13;
   doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(M + halfW + 5, y, halfW, sec34H, 2, 2, 'FD');
-
+  doc.roundedRect(M, y, CW, sec4H, 2, 2, 'FD');
   const statiList = ['Funzionante', 'Funzionante con riserva', 'Fermo / non funzionante'];
   const statiCols = { 'Funzionante': [16,185,129], 'Funzionante con riserva': [245,158,11], 'Fermo / non funzionante': [239,68,68] };
+  const itemW4 = CW / 3;
   statiList.forEach((s, idx) => {
-    const ckX = M + halfW + 9; const ckY = y + 7 + idx * 10;
+    const ckX = M + idx * itemW4 + 5;
+    const ckY = y + sec4H / 2;
     const col = statiCols[s] || [100,116,139];
     const checked = (statoImpianto === s);
     doc.setDrawColor(...col);
     if (checked) {
-      doc.setFillColor(...col); doc.roundedRect(ckX, ckY - 2, 4.5, 4.5, 0.5, 0.5, 'FD');
+      doc.setFillColor(...col); doc.roundedRect(ckX, ckY - 2.5, 4.5, 4.5, 0.5, 0.5, 'FD');
       doc.setDrawColor(255,255,255); doc.setLineWidth(0.5);
-      doc.line(ckX + 0.8, ckY + 0.6, ckX + 1.9, ckY + 1.9);
-      doc.line(ckX + 1.9, ckY + 1.9, ckX + 3.8, ckY - 0.5);
+      doc.line(ckX + 0.8, ckY + 0.4, ckX + 1.9, ckY + 1.6);
+      doc.line(ckX + 1.9, ckY + 1.6, ckX + 3.8, ckY - 0.8);
       doc.setLineWidth(0.2);
     } else {
-      doc.setFillColor(255,255,255); doc.roundedRect(ckX, ckY - 2, 4.5, 4.5, 0.5, 0.5, 'FD');
+      doc.setFillColor(255,255,255); doc.roundedRect(ckX, ckY - 2.5, 4.5, 4.5, 0.5, 0.5, 'FD');
     }
-    doc.setFontSize(9); doc.setFont('helvetica', checked ? 'bold' : 'normal');
+    doc.setFontSize(8); doc.setFont('helvetica', checked ? 'bold' : 'normal');
     doc.setTextColor(...(checked ? col : [100,116,139]));
-    // Aggiungi "(vedi anomalie)" su riga separata se riserva
-    const displayLabel = s === 'Funzionante con riserva' ? 'Funzionante con riserva' : s;
-    doc.text(displayLabel, ckX + 6, ckY + 1, { maxWidth: halfW - 20 });
-    if (s === 'Funzionante con riserva') {
-      doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(180,180,180);
-      doc.text('(vedi anomalie)', ckX + 6, ckY + 5);
-    }
+    doc.text(s, ckX + 6, ckY + 0.8, { maxWidth: itemW4 - 10 });
   });
-
-  y += sec34H + 5;
+  y += sec4H + 5;
 
   // Prossima manutenzione (se presente, prima delle firme)
   if (prossima.trim()) {
@@ -3078,11 +3081,11 @@ async function generaPDF() {
   }
 
   // ─── SEZIONE 5: FIRME ────────────────────────────────
-  // firmaH(46) + drawSecHeader(10) + gap(2) = 58mm effettivi; soglia 60 lascia 2mm margine
-  if (y + 60 > PH - M) { doc.addPage(); y = M; }
+  // firmaH(36) + drawSecHeader(10) + gap(2) = 48mm effettivi; soglia 50 lascia 2mm margine
+  if (y + 50 > PH - M) { doc.addPage(); y = M; }
   const s5end = drawSecHeader(5, 'Firme', M, y);
   y = s5end + 2;
-  const firmaH = 46;
+  const firmaH = 36;
 
   // TECNICO MDA (sinistra)
   doc.setFillColor(255, 255, 255); doc.setDrawColor(226, 232, 240);
@@ -3091,13 +3094,13 @@ async function generaPDF() {
   doc.text('TECNICO MDA', M + 4, y + 5);
   // Linea firma
   doc.setDrawColor(200, 210, 220); doc.setLineWidth(0.3);
-  doc.line(M + 8, y + 26, M + halfW - 8, y + 26);
+  doc.line(M + 8, y + 20, M + halfW - 8, y + 20);
   doc.setLineWidth(0.2);
   doc.setFontSize(8); doc.setFont('helvetica', 'italic'); doc.setTextColor(200,210,220);
-  doc.text('firma tecnico', M + halfW / 2, y + 22, { align: 'center' });
+  doc.text('firma tecnico', M + halfW / 2, y + 16, { align: 'center' });
   doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(50,60,80);
-  doc.text('Nome: ' + (tecnico ? tecnico.nome : '-'), M + 4, y + 32);
-  doc.text('Data: ' + (data ? new Date(data+'T12:00').toLocaleDateString('it-IT') : '-'), M + 4, y + 39);
+  doc.text('Nome: ' + (tecnico ? tecnico.nome : '-'), M + 4, y + 25);
+  doc.text('Data: ' + (data ? new Date(data+'T12:00').toLocaleDateString('it-IT') : '-'), M + 4, y + 31);
 
   // CLIENTE (destra)
   doc.setFillColor(255, 255, 255); doc.setDrawColor(226, 232, 240);
@@ -3107,16 +3110,16 @@ async function generaPDF() {
   // Firma immagine
   const sigData = _firmaBloccata || (signaturePad && !signaturePad.isEmpty() ? signaturePad.toDataURL() : null);
   if (sigData && sigData.length > 100) {
-    doc.addImage(sigData, 'PNG', M + halfW + 9, y + 7, halfW - 18, 18);
+    doc.addImage(sigData, 'PNG', M + halfW + 9, y + 6, halfW - 18, 12);
   }
   doc.setDrawColor(30, 64, 175); doc.setLineWidth(0.3);
-  doc.line(M + halfW + 9, y + 27, M + halfW + halfW - 4, y + 27);
+  doc.line(M + halfW + 9, y + 20, M + halfW + halfW - 4, y + 20);
   doc.setLineWidth(0.2);
   doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(50,60,80);
-  if (firmatario) doc.text(firmatario, M + halfW + 9, y + 33);
+  if (firmatario) doc.text(firmatario, M + halfW + 9, y + 25);
   doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(100,116,139);
   const disclaimer = doc.splitTextToSize('Il sottoscritto dichiara che i lavori sopra descritti sono stati eseguiti in sua presenza e di aver preso visione delle anomalie segnalate.', halfW - 12);
-  doc.text(disclaimer, M + halfW + 9, y + 38);
+  doc.text(disclaimer, M + halfW + 9, y + 29);
 
   y += firmaH + 4;
 
@@ -6026,7 +6029,7 @@ function generaOreAdPersonam() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.63'; // new: form rapportino visibile subito da agenda, badge ore card collassata, banner sync stale
+const _APP_VERSION = '2.64'; // new: PDF rapportino su 1 pagina (sez.2+3 affiancate, sez.4 orizzontale, box ridotti, firmaH compatta)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
