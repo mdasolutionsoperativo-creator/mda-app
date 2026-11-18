@@ -3556,7 +3556,8 @@ function gcalCheckConfig() {
 function gcalConnect() {
   if (!GCAL.CLIENT_ID) { toast('GCal non configurato'); return; }
   if (!_tokenClient) { toast('Libreria Google non caricata ancora, riprova tra un secondo'); return; }
-  _tokenClient.requestAccessToken({ prompt: _gcalToken ? '' : 'consent', hint: currentTech?.email || '' });
+  // prompt:'select_account' forza sempre il selettore account Google
+  _tokenClient.requestAccessToken({ prompt: 'select_account' });
 }
 
 function gcalDisconnect() {
@@ -3571,7 +3572,9 @@ function gcalDisconnect() {
 /* ══ Google Drive ═══════════════════════════════════════ */
 function driveConnect() {
   if (!_driveTokenClient) { toast('Libreria Google non ancora caricata, riprova tra un secondo'); return; }
-  _driveTokenClient.requestAccessToken({ prompt: _driveToken ? '' : 'consent', hint: currentTech?.email || '' });
+  // prompt:'select_account' forza sempre il selettore account Google (utile quando si vuole
+  // usare un account diverso da quello attivo nel browser, es. mdasolutions.operativo)
+  _driveTokenClient.requestAccessToken({ prompt: 'select_account' });
 }
 
 function driveDisconnect() {
@@ -6029,7 +6032,7 @@ function generaOreAdPersonam() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.64'; // new: PDF rapportino su 1 pagina (sez.2+3 affiancate, sez.4 orizzontale, box ridotti, firmaH compatta)
+const _APP_VERSION = '2.65'; // new: PDF 1 pagina + driveConnect/gcalConnect sempre mostrano selettore account Google
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
