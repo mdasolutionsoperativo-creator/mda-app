@@ -4343,9 +4343,9 @@ function _pulisciDuplicatiArchivio() {
 ═══════════════════════════════════════════════════════════ */
 async function uploadRappMetaDrive(rapp) {
   if (!_driveToken || !GCAL.DRIVE_FOLDER_ID) return;
-  // Salta rapportini incompleti (numero null/NaN = PDF non completato correttamente)
-  if (!rapp || !rapp.id || rapp.numero === null || rapp.numero === undefined || isNaN(rapp.numero)) {
-    console.log('rapp_meta: skip upload, dati incompleti (numero:', rapp?.numero, ')'); return;
+  // Salta se mancano dati essenziali (rapportino avviato ma non completato)
+  if (!rapp || !rapp.id || !rapp.ore || !rapp.data || !rapp.tecnico) {
+    console.log('rapp_meta: skip upload, dati incompleti (ore:', rapp?.ore, 'data:', rapp?.data, ')'); return;
   }
   const metaFolderId = await _driveGetMetaFolderId();
   const filename = 'rapp_meta_' + rapp.id + '.json';
@@ -6032,7 +6032,7 @@ function generaOreAdPersonam() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.65'; // new: PDF 1 pagina + driveConnect/gcalConnect sempre mostrano selettore account Google
+const _APP_VERSION = '2.66'; // new: upload rapp_meta anche per rapportini con numero null (fix sync Drive)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
