@@ -750,7 +750,11 @@
       </div>
       <div class="form-group">
         <label class="form-label">Cliente</label>
-        <select class="form-control" id="int-cliente"></select>
+        <select class="form-control" id="int-cliente" onchange="aggiornaPlaceholderLuogo('int-cliente','int-luogo')"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Luogo <span style="font-weight:400;color:#94a3b8;text-transform:none">(se diverso dall'indirizzo del cliente)</span></label>
+        <input type="text" class="form-control" id="int-luogo" placeholder="Indirizzo del cliente">
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="form-group">
@@ -1750,11 +1754,40 @@ function _rappEsistentePerAppt(a) {
 /* ═══════════════════════════════════════════════════════════
    CARD APPUNTAMENTO
 ═══════════════════════════════════════════════════════════ */
+// ── Luogo appuntamento: campo libero, altrimenti indirizzo del cliente ──
+function _apptLuogo(a) {
+  if (!a) return '';
+  if (a.luogo && a.luogo.trim()) return a.luogo.trim();
+  const c = CLIENTI.find(x => x.id === a.clienteId);
+  return (c && c.indirizzo) || '';
+}
+function _mapsLink(luogo) {
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(luogo);
+}
+function _luogoHtml(luogo, fontSize) {
+  if (!luogo) return '';
+  return `<a href="${_mapsLink(luogo)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline;font-size:${fontSize||12}px">${luogo}</a>`;
+}
+// Luogo letto da GCal: salvato come campo libero solo se diverso dall'indirizzo cliente
+function _luogoFromEvent(ev, clienteId) {
+  const loc = (ev.location || '').trim();
+  const c = CLIENTI.find(x => x.id === clienteId);
+  if (!loc || (c && c.indirizzo && loc === c.indirizzo.trim())) return '';
+  return loc;
+}
+function aggiornaPlaceholderLuogo(selId, inputId) {
+  const sel = document.getElementById(selId);
+  const inp = document.getElementById(inputId);
+  if (!sel || !inp) return;
+  const c = CLIENTI.find(x => x.id === sel.value);
+  inp.placeholder = (c && c.indirizzo) ? c.indirizzo : 'Es. Via della Pergola 51, 23900 Lecco (LC)';
+}
+
 function renderApptCard(a) {
   const tech = Object.values(CONFIG.tecnici).find(t => t.id === a.tecnico);
   const cliente = CLIENTI.find(c => c.id === a.clienteId) || { nome: a.clienteNome || 'Cliente', indirizzo: '' };
   const isExtra = a.tipo === 'extra';
-  const indirizzo = cliente.indirizzo || '';
+  const indirizzo = _apptLuogo(a);
   const hasDetail = !!(indirizzo || a.note);
   // Colleghi di squadra: usa a.squadra se disponibile (sincronizzato da GCal),
   // altrimenti fallback a lookup locale (funziona solo lato admin dove ci sono tutti gli appt)
@@ -1804,7 +1837,7 @@ function renderApptCard(a) {
       <!-- Pannello espandibile -->
       <div id="appt-detail-${a.id}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0">
         ${indirizzo ? `<div style="font-size:12px;color:var(--sub);margin-bottom:8px;display:flex;align-items:flex-start;gap:5px">
-          <span style="flex-shrink:0">📍</span><span>${indirizzo}</span></div>` : ''}
+          <span style="flex-shrink:0">📍</span><span>${_luogoHtml(indirizzo, 12)}</span></div>` : ''}
         ${colleghi.length ? `<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 10px;background:#f0fdf4;border-radius:8px;border-left:3px solid #10b981">
           <span style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">👥 Squadra:</span>
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
@@ -1842,7 +1875,7 @@ function openApptModal(id) {
   if (!a) return;
   const tech    = Object.values(CONFIG.tecnici).find(t => t.id === a.tecnico);
   const cliente = CLIENTI.find(c => c.id === a.clienteId) || { nome: a.clienteNome || 'Cliente', indirizzo: '' };
-  const indirizzo = cliente.indirizzo || '';
+  const indirizzo = _apptLuogo(a);
   const timeRange = a.ora + (a.ora_fine ? ' → ' + a.ora_fine : '');
 
   // Squadra: usa a.squadra se disponibile, altrimenti lookup tra tutti gli appt (funziona admin-side)
@@ -1882,7 +1915,7 @@ function openApptModal(id) {
       <span>📅</span><strong>${a.data}</strong><span style="color:#94a3b8">·</span><span>⏱</span><strong>${timeRange}</strong>
     </div>
     ${indirizzo ? `<div style="font-size:13px;color:var(--sub);margin-bottom:12px;display:flex;align-items:flex-start;gap:6px;padding:10px 12px;background:#f8fafc;border-radius:10px">
-      <span style="flex-shrink:0">📍</span><span>${indirizzo}</span></div>` : ''}
+      <span style="flex-shrink:0">📍</span><span>${_luogoHtml(indirizzo, 13)}</span></div>` : ''}
     ${modalColleghi.length ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 12px;background:#f0fdf4;border-radius:10px;border-left:3px solid #10b981">
       <span style="font-size:12px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">👥 Squadra:</span>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -1944,6 +1977,9 @@ function editAppt(id) {
 
   const noteEl = document.getElementById('int-note');
   if (noteEl) noteEl.value = a.note || '';
+  const luogoEl = document.getElementById('int-luogo');
+  if (luogoEl) luogoEl.value = a.luogo || '';
+  aggiornaPlaceholderLuogo('int-cliente', 'int-luogo');
 
   // Nascondi pannelli ricorrenza/squadra/data-fine in edit mode
   ['int-ricorrenza-panel', 'int-squadra-panel'].forEach(pid => {
@@ -2141,8 +2177,11 @@ function apriRapportinoDa(id) {
     }
   }
 
-  // Indirizzo dal cliente trovato
-  if (clienteTrovato && clienteTrovato.indirizzo) {
+  // Indirizzo: luogo dell'appuntamento, altrimenti indirizzo del cliente
+  if (a.luogo && a.luogo.trim()) {
+    const indirizzoEl = document.getElementById('rapp-indirizzo');
+    if (indirizzoEl) indirizzoEl.value = a.luogo.trim();
+  } else if (clienteTrovato && clienteTrovato.indirizzo) {
     const indirizzoEl = document.getElementById('rapp-indirizzo');
     if (indirizzoEl && !indirizzoEl.value) indirizzoEl.value = clienteTrovato.indirizzo;
   }
@@ -2232,6 +2271,8 @@ function resetInterventoForm() {
   document.getElementById('int-squadra-btn').style.color = '#64748b';
   document.querySelectorAll('#int-cadenza-chips .chip').forEach(c => c.classList.remove('selected'));
   document.getElementById('int-note').value = '';
+  const luogoResetEl = document.getElementById('int-luogo');
+  if (luogoResetEl) { luogoResetEl.value = ''; luogoResetEl.placeholder = 'Indirizzo del cliente'; }
   // Azzera campo data fine plurigiornaliero
   const dataFineEl = document.getElementById('int-data-fine');
   if (dataFineEl) dataFineEl.value = '';
@@ -2271,6 +2312,7 @@ function salvaIntervento() {
   const oraFine   = document.getElementById('int-ora-fine').value;
   const tipoEl    = document.querySelector('#int-tipo-chips .chip.selected');
   const note      = document.getElementById('int-note').value.trim();
+  const luogo     = (document.getElementById('int-luogo')?.value || '').trim();
 
   if (!tecnicoId) { toast('Seleziona il tecnico'); return; }
   if (!clienteId) { toast('⚠️ Seleziona il cliente'); return; }
@@ -2313,6 +2355,7 @@ function salvaIntervento() {
       found.ora_fine = oraFine || '';
       found.tipo_intervento = tipoVal;
       found.note = note;
+      found.luogo = luogo;
       // Salva nel giusto store
       if (interventoExtra.find(a => a.id === editingApptId)) saveExtra();
       else saveAppuntamenti();
@@ -2330,6 +2373,7 @@ function salvaIntervento() {
           comp.ora_fine       = oraFine || '';
           comp.tipo_intervento = tipoVal;
           comp.note           = note;
+          comp.luogo          = luogo;
           comp.squadra        = [...tuttiTecnici]; // aggiorna campo squadra anche sui compagni
           if (_gcalToken) gcalPushAppt(comp).catch(() => {});
         }
@@ -2357,6 +2401,7 @@ function salvaIntervento() {
           ora_fine: oraFine || '',
           tipo_intervento: tipoVal,
           note,
+          luogo,
           tipo: 'extra',
           completato: false,
           creato: new Date().toISOString()
@@ -2429,6 +2474,7 @@ function salvaIntervento() {
         ora_fine: oraFine || '',
         tipo_intervento: tipoVal,
         note,
+        luogo,
         tipo: 'extra',
         completato: false,
         creato: new Date().toISOString()
@@ -4535,7 +4581,7 @@ function _apptToEvent(appt) {
         `[mda_al:${(al.id||'').replace(/[|\]]/g,'')}|${(al.nome||'').replace(/[|\]]/g,'_')}|${(al.url||'').replace(/[\]]/g,'')}]`
       )
     ].filter(Boolean).join('\n'),
-    location: c.indirizzo || '',
+    location: _apptLuogo(appt),
     start: { dateTime: `${appt.data}T${ora}:00`, timeZone: 'Europe/Rome' },
     end:   { dateTime: `${appt.data}T${oraEnd}:00`, timeZone: 'Europe/Rome' },
     colorId: appt.completato ? '2' : '1'
@@ -4740,6 +4786,8 @@ async function gcalImport() {
             existing.allegati = evAllegati; needsSave = true;
           }
           if (existing.completato !== evCompletato) { existing.completato = evCompletato; needsSave = true; }
+          const _evLuogo = _luogoFromEvent(ev, existing.clienteId);
+          if ((existing.luogo || '') !== _evLuogo) { existing.luogo = _evLuogo; needsSave = true; }
           if (alreadyById && !alreadyById.gcalId) { alreadyById.gcalId = ev.id; needsSave = true; }
           continue;
         }
@@ -4758,6 +4806,7 @@ async function gcalImport() {
           note: (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|\[mda_al:[^\]]+\]|✅ COMPLETATO/g,'').trim(),
           allegati: evAllegati,
           completato: evCompletato,
+          luogo: _luogoFromEvent(ev, resolvedClienteId),
           source: 'gcal'
         });
         imported++;
@@ -4898,6 +4947,8 @@ async function techCalSync() {
         if (evClienteId && existing.clienteId !== evClienteId) { existing.clienteId = evClienteId; existing.clienteNome = evClienteNome; changed = true; }
         if (JSON.stringify(existing.allegati||[]) !== JSON.stringify(evAllegati)) { existing.allegati = evAllegati; changed = true; }
         if (existing.completato !== evCompletato)  { existing.completato   = evCompletato; changed = true; }
+        const _evLuogoT = _luogoFromEvent(ev, existing.clienteId || evClienteId);
+        if ((existing.luogo || '') !== _evLuogoT)  { existing.luogo        = _evLuogoT;    changed = true; }
         if (!existing.gcalId) { existing.gcalId = ev.id; changed = true; }
         if (evSquad && JSON.stringify(existing.squadra||[]) !== JSON.stringify(evSquad)) { existing.squadra = evSquad; changed = true; }
         if (changed) { needsSave = true; imported++; }
@@ -4911,6 +4962,7 @@ async function techCalSync() {
         clienteId: evClienteId, clienteNome: evClienteNome,
         tipo_intervento: evTipo, note: evNote,
         allegati: evAllegati, completato: evCompletato,
+        luogo: _luogoFromEvent(ev, evClienteId),
         source: 'gcal'
       });
       imported++;
@@ -5763,7 +5815,7 @@ function openDragCreateModal(techId, oraInizio, oraFine) {
 
     <div style="margin-bottom:14px">
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cliente</label>
-      <select id="dc-cliente" class="form-control" style="margin-top:4px">
+      <select id="dc-cliente" class="form-control" style="margin-top:4px" onchange="aggiornaPlaceholderLuogo('dc-cliente','dc-luogo')">
         <option value="">— Seleziona cliente —</option>
         ${optsHtml}
       </select>
@@ -5772,6 +5824,11 @@ function openDragCreateModal(techId, oraInizio, oraFine) {
     <div style="margin-bottom:14px">
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Tipo intervento</label>
       <div class="chips dc-chips" style="margin-top:6px;flex-wrap:wrap">${chipsHtml}</div>
+    </div>
+
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Luogo (se diverso dal cliente)</label>
+      <input id="dc-luogo" type="text" class="form-control" placeholder="Indirizzo del cliente" style="margin-top:4px">
     </div>
 
     <div style="margin-bottom:18px">
@@ -5799,6 +5856,7 @@ function saveDragCreate(techId, dateStr) {
   const oraFine   = document.getElementById('dc-ora-fine').value;
   const tipoEl    = document.querySelector('.dc-chips .chip.selected');
   const note      = document.getElementById('dc-note').value.trim();
+  const luogo     = (document.getElementById('dc-luogo')?.value || '').trim();
 
   if (!clienteId) { toast('⚠️ Seleziona il cliente'); return; }
   if (!ora)       { toast('⚠️ Inserisci l\'ora di inizio'); return; }
@@ -5816,6 +5874,7 @@ function saveDragCreate(techId, dateStr) {
     ora_fine:        oraFine || '',
     tipo_intervento: tipo,
     note,
+    luogo,
     completato:      false,
     tipo:            'extra',
     source:          'drag',
@@ -6040,7 +6099,7 @@ function generaOreAdPersonam() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.67'; // new: fix nomi tecnici OreAdPersonam (NOME COGNOME), reperibilità in agenda (verde)
+const _APP_VERSION = '2.68'; // new: campo Luogo negli interventi (VARIE/fuori sede), sync GCal location, link Maps; prev 2.67: // new: fix nomi tecnici OreAdPersonam (NOME COGNOME), reperibilità in agenda (verde)
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
