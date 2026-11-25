@@ -750,11 +750,7 @@
       </div>
       <div class="form-group">
         <label class="form-label">Cliente</label>
-        <select class="form-control" id="int-cliente" onchange="aggiornaPlaceholderLuogo('int-cliente','int-luogo')"></select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Luogo <span style="font-weight:400;color:#94a3b8;text-transform:none">(se diverso dall'indirizzo del cliente)</span></label>
-        <input type="text" class="form-control" id="int-luogo" placeholder="Indirizzo del cliente">
+        <select class="form-control" id="int-cliente"></select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="form-group">
@@ -1754,40 +1750,11 @@ function _rappEsistentePerAppt(a) {
 /* ═══════════════════════════════════════════════════════════
    CARD APPUNTAMENTO
 ═══════════════════════════════════════════════════════════ */
-// ── Luogo appuntamento: campo libero, altrimenti indirizzo del cliente ──
-function _apptLuogo(a) {
-  if (!a) return '';
-  if (a.luogo && a.luogo.trim()) return a.luogo.trim();
-  const c = CLIENTI.find(x => x.id === a.clienteId);
-  return (c && c.indirizzo) || '';
-}
-function _mapsLink(luogo) {
-  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(luogo);
-}
-function _luogoHtml(luogo, fontSize) {
-  if (!luogo) return '';
-  return `<a href="${_mapsLink(luogo)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit;text-decoration:underline;font-size:${fontSize||12}px">${luogo}</a>`;
-}
-// Luogo letto da GCal: salvato come campo libero solo se diverso dall'indirizzo cliente
-function _luogoFromEvent(ev, clienteId) {
-  const loc = (ev.location || '').trim();
-  const c = CLIENTI.find(x => x.id === clienteId);
-  if (!loc || (c && c.indirizzo && loc === c.indirizzo.trim())) return '';
-  return loc;
-}
-function aggiornaPlaceholderLuogo(selId, inputId) {
-  const sel = document.getElementById(selId);
-  const inp = document.getElementById(inputId);
-  if (!sel || !inp) return;
-  const c = CLIENTI.find(x => x.id === sel.value);
-  inp.placeholder = (c && c.indirizzo) ? c.indirizzo : 'Es. Via della Pergola 51, 23900 Lecco (LC)';
-}
-
 function renderApptCard(a) {
   const tech = Object.values(CONFIG.tecnici).find(t => t.id === a.tecnico);
   const cliente = CLIENTI.find(c => c.id === a.clienteId) || { nome: a.clienteNome || 'Cliente', indirizzo: '' };
   const isExtra = a.tipo === 'extra';
-  const indirizzo = _apptLuogo(a);
+  const indirizzo = cliente.indirizzo || '';
   const hasDetail = !!(indirizzo || a.note);
   // Colleghi di squadra: usa a.squadra se disponibile (sincronizzato da GCal),
   // altrimenti fallback a lookup locale (funziona solo lato admin dove ci sono tutti gli appt)
@@ -1837,7 +1804,7 @@ function renderApptCard(a) {
       <!-- Pannello espandibile -->
       <div id="appt-detail-${a.id}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0">
         ${indirizzo ? `<div style="font-size:12px;color:var(--sub);margin-bottom:8px;display:flex;align-items:flex-start;gap:5px">
-          <span style="flex-shrink:0">📍</span><span>${_luogoHtml(indirizzo, 12)}</span></div>` : ''}
+          <span style="flex-shrink:0">📍</span><span>${indirizzo}</span></div>` : ''}
         ${colleghi.length ? `<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 10px;background:#f0fdf4;border-radius:8px;border-left:3px solid #10b981">
           <span style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">👥 Squadra:</span>
           <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
@@ -1875,7 +1842,7 @@ function openApptModal(id) {
   if (!a) return;
   const tech    = Object.values(CONFIG.tecnici).find(t => t.id === a.tecnico);
   const cliente = CLIENTI.find(c => c.id === a.clienteId) || { nome: a.clienteNome || 'Cliente', indirizzo: '' };
-  const indirizzo = _apptLuogo(a);
+  const indirizzo = cliente.indirizzo || '';
   const timeRange = a.ora + (a.ora_fine ? ' → ' + a.ora_fine : '');
 
   // Squadra: usa a.squadra se disponibile, altrimenti lookup tra tutti gli appt (funziona admin-side)
@@ -1915,7 +1882,7 @@ function openApptModal(id) {
       <span>📅</span><strong>${a.data}</strong><span style="color:#94a3b8">·</span><span>⏱</span><strong>${timeRange}</strong>
     </div>
     ${indirizzo ? `<div style="font-size:13px;color:var(--sub);margin-bottom:12px;display:flex;align-items:flex-start;gap:6px;padding:10px 12px;background:#f8fafc;border-radius:10px">
-      <span style="flex-shrink:0">📍</span><span>${_luogoHtml(indirizzo, 13)}</span></div>` : ''}
+      <span style="flex-shrink:0">📍</span><span>${indirizzo}</span></div>` : ''}
     ${modalColleghi.length ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:10px 12px;background:#f0fdf4;border-radius:10px;border-left:3px solid #10b981">
       <span style="font-size:12px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">👥 Squadra:</span>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -1977,9 +1944,6 @@ function editAppt(id) {
 
   const noteEl = document.getElementById('int-note');
   if (noteEl) noteEl.value = a.note || '';
-  const luogoEl = document.getElementById('int-luogo');
-  if (luogoEl) luogoEl.value = a.luogo || '';
-  aggiornaPlaceholderLuogo('int-cliente', 'int-luogo');
 
   // Nascondi pannelli ricorrenza/squadra/data-fine in edit mode
   ['int-ricorrenza-panel', 'int-squadra-panel'].forEach(pid => {
@@ -2177,11 +2141,8 @@ function apriRapportinoDa(id) {
     }
   }
 
-  // Indirizzo: luogo dell'appuntamento, altrimenti indirizzo del cliente
-  if (a.luogo && a.luogo.trim()) {
-    const indirizzoEl = document.getElementById('rapp-indirizzo');
-    if (indirizzoEl) indirizzoEl.value = a.luogo.trim();
-  } else if (clienteTrovato && clienteTrovato.indirizzo) {
+  // Indirizzo dal cliente trovato
+  if (clienteTrovato && clienteTrovato.indirizzo) {
     const indirizzoEl = document.getElementById('rapp-indirizzo');
     if (indirizzoEl && !indirizzoEl.value) indirizzoEl.value = clienteTrovato.indirizzo;
   }
@@ -2271,8 +2232,6 @@ function resetInterventoForm() {
   document.getElementById('int-squadra-btn').style.color = '#64748b';
   document.querySelectorAll('#int-cadenza-chips .chip').forEach(c => c.classList.remove('selected'));
   document.getElementById('int-note').value = '';
-  const luogoResetEl = document.getElementById('int-luogo');
-  if (luogoResetEl) { luogoResetEl.value = ''; luogoResetEl.placeholder = 'Indirizzo del cliente'; }
   // Azzera campo data fine plurigiornaliero
   const dataFineEl = document.getElementById('int-data-fine');
   if (dataFineEl) dataFineEl.value = '';
@@ -2312,7 +2271,6 @@ function salvaIntervento() {
   const oraFine   = document.getElementById('int-ora-fine').value;
   const tipoEl    = document.querySelector('#int-tipo-chips .chip.selected');
   const note      = document.getElementById('int-note').value.trim();
-  const luogo     = (document.getElementById('int-luogo')?.value || '').trim();
 
   if (!tecnicoId) { toast('Seleziona il tecnico'); return; }
   if (!clienteId) { toast('⚠️ Seleziona il cliente'); return; }
@@ -2355,7 +2313,6 @@ function salvaIntervento() {
       found.ora_fine = oraFine || '';
       found.tipo_intervento = tipoVal;
       found.note = note;
-      found.luogo = luogo;
       // Salva nel giusto store
       if (interventoExtra.find(a => a.id === editingApptId)) saveExtra();
       else saveAppuntamenti();
@@ -2373,7 +2330,6 @@ function salvaIntervento() {
           comp.ora_fine       = oraFine || '';
           comp.tipo_intervento = tipoVal;
           comp.note           = note;
-          comp.luogo          = luogo;
           comp.squadra        = [...tuttiTecnici]; // aggiorna campo squadra anche sui compagni
           if (_gcalToken) gcalPushAppt(comp).catch(() => {});
         }
@@ -2401,7 +2357,6 @@ function salvaIntervento() {
           ora_fine: oraFine || '',
           tipo_intervento: tipoVal,
           note,
-          luogo,
           tipo: 'extra',
           completato: false,
           creato: new Date().toISOString()
@@ -2474,7 +2429,6 @@ function salvaIntervento() {
         ora_fine: oraFine || '',
         tipo_intervento: tipoVal,
         note,
-        luogo,
         tipo: 'extra',
         completato: false,
         creato: new Date().toISOString()
@@ -2513,6 +2467,7 @@ function aggiungiFeria() {
 
   ferie.push({ id: 'f_' + Date.now(), tecnicoId, dal, al, note });
   saveFerie();
+  uploadFerieDrive(); // fire-and-forget: sync su Drive in background
   renderFerieAdmin();
   document.getElementById('ferie-dal').value = '';
   document.getElementById('ferie-al').value = '';
@@ -2523,6 +2478,7 @@ function aggiungiFeria() {
 function eliminaFeria(id) {
   ferie = ferie.filter(f => f.id !== id);
   saveFerie();
+  uploadFerieDrive(); // fire-and-forget: sync su Drive in background
   renderFerieAdmin();
   toast('Periodo ferie rimosso');
 }
@@ -2575,6 +2531,7 @@ function aggiungiReperibilita() {
 
   reperibilita.push({ id: 'rp_' + Date.now(), tecnicoId, dal, al, ore, note });
   saveReperibilita();
+  uploadReperibilitaDrive(); // fire-and-forget: sync su Drive in background
   renderReperibilitaAdmin();
   document.getElementById('reper-dal').value = '';
   document.getElementById('reper-al').value = '';
@@ -2586,6 +2543,7 @@ function aggiungiReperibilita() {
 function eliminaReperibilita(id) {
   reperibilita = reperibilita.filter(r => r.id !== id);
   saveReperibilita();
+  uploadReperibilitaDrive(); // fire-and-forget: sync su Drive in background
   renderReperibilitaAdmin();
   toast('Periodo reperibilità rimosso');
 }
@@ -4455,6 +4413,59 @@ async function uploadTuttiRapportiniDrive() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   SYNC FERIE & REPERIBILITÀ SU DRIVE (admin)
+   Carica mda_ferie.json / mda_reperibilita.json nella cartella
+   _meta, aggiornando il file esistente o creandone uno nuovo.
+═══════════════════════════════════════════════════════════ */
+async function _driveUploadJsonFile(fname, data) {
+  if (!_driveToken || !GCAL.DRIVE_FOLDER_ID) return false;
+  try {
+    const metaFolderId = await _driveGetMetaFolderId();
+    const content = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    // Cerca se esiste già
+    const q = encodeURIComponent(`'${metaFolderId}' in parents and name='${fname}' and trashed=false`);
+    const chk = await _swFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {
+      headers: { Authorization: `Bearer ${_driveToken}` }
+    });
+    if (chk.ok) {
+      const { files } = await chk.json();
+      if (files && files.length > 0) {
+        await _swFetch(`https://www.googleapis.com/upload/drive/v3/files/${files[0].id}?uploadType=media`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+          body: content
+        });
+        console.log(fname, 'aggiornato su Drive');
+        return true;
+      }
+    }
+    // Crea nuovo file
+    const s1 = await _swFetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+      body: new Blob([JSON.stringify({ name: fname, parents: [metaFolderId], mimeType: 'application/json' })], { type: 'application/json' })
+    });
+    if (!s1.ok) { console.warn(fname, 'upload step1 failed', s1.status); return false; }
+    const { id: fid } = await s1.json();
+    await _swFetch(`https://www.googleapis.com/upload/drive/v3/files/${fid}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${_driveToken}`, 'Content-Type': 'application/json' },
+      body: content
+    });
+    console.log(fname, 'creato su Drive');
+    return true;
+  } catch(e) { console.warn('_driveUploadJsonFile(' + fname + ') failed:', e); return false; }
+}
+
+async function uploadFerieDrive() {
+  return _driveUploadJsonFile('mda_ferie.json', ferie);
+}
+
+async function uploadReperibilitaDrive() {
+  return _driveUploadJsonFile('mda_reperibilita.json', reperibilita);
+}
+
+/* ═══════════════════════════════════════════════════════════
    SINCRONIZZA PRESENZE DA DRIVE (admin)
 ═══════════════════════════════════════════════════════════ */
 async function sincronizzaPresenzeDrive(_retried = false) {
@@ -4522,12 +4533,66 @@ async function sincronizzaPresenzeDrive(_retried = false) {
     const rimossiDedup = archivio.length - archivioDedup.length;
     localStorage.setItem('mda_rapportini', JSON.stringify(archivioDedup));
     const totMsg = rimossiDedup > 0 ? ` · 🧹 ${rimossiDedup} duplicati rimossi` : '';
+    // ── Scarica ferie da Drive e mergia con localStorage ────────────────────
+    let ferieNuove = 0, reperNuove = 0;
+    try {
+      const fq = encodeURIComponent(`'${_syncMetaFId}' in parents and name='mda_ferie.json' and trashed=false`);
+      const fResp = await _swFetch(`https://www.googleapis.com/drive/v3/files?q=${fq}&fields=files(id)`, {
+        headers: { Authorization: `Bearer ${_driveToken}` }
+      });
+      if (fResp.ok) {
+        const { files: fFiles } = await fResp.json();
+        if (fFiles && fFiles.length > 0) {
+          const fd = await _swFetch(`https://www.googleapis.com/drive/v3/files/${fFiles[0].id}?alt=media`, {
+            headers: { Authorization: `Bearer ${_driveToken}` }
+          });
+          if (fd.ok) {
+            const ferieRemote = await fd.json();
+            if (Array.isArray(ferieRemote)) {
+              const ferieIds = new Set(ferie.map(f => f.id));
+              for (const f of ferieRemote) {
+                if (f?.id && !ferieIds.has(f.id)) { ferie.push(f); ferieIds.add(f.id); ferieNuove++; }
+              }
+              if (ferieNuove > 0) { saveFerie(); renderFerieAdmin(); }
+            }
+          }
+        }
+      }
+    } catch(e) { console.warn('sync ferie Drive failed:', e); }
+    // ── Scarica reperibilità da Drive e mergia con localStorage ─────────────
+    try {
+      const rq = encodeURIComponent(`'${_syncMetaFId}' in parents and name='mda_reperibilita.json' and trashed=false`);
+      const rResp = await _swFetch(`https://www.googleapis.com/drive/v3/files?q=${rq}&fields=files(id)`, {
+        headers: { Authorization: `Bearer ${_driveToken}` }
+      });
+      if (rResp.ok) {
+        const { files: rFiles } = await rResp.json();
+        if (rFiles && rFiles.length > 0) {
+          const rd = await _swFetch(`https://www.googleapis.com/drive/v3/files/${rFiles[0].id}?alt=media`, {
+            headers: { Authorization: `Bearer ${_driveToken}` }
+          });
+          if (rd.ok) {
+            const reperRemote = await rd.json();
+            if (Array.isArray(reperRemote)) {
+              const reperIds = new Set(reperibilita.map(r => r.id));
+              for (const r of reperRemote) {
+                if (r?.id && !reperIds.has(r.id)) { reperibilita.push(r); reperIds.add(r.id); reperNuove++; }
+              }
+              if (reperNuove > 0) { saveReperibilita(); renderReperibilitaAdmin(); }
+            }
+          }
+        }
+      }
+    } catch(e) { console.warn('sync reperibilita Drive failed:', e); }
+    // ── Fine sync ferie/reperibilità ─────────────────────────────────────────
     // Salva timestamp ultima sincronizzazione (usato per warning nelle funzioni di report)
     localStorage.setItem('mda_last_sync', new Date().toISOString());
     _aggiornaLabelUltimaSync();
+    const extraMsg = (ferieNuove > 0 || reperNuove > 0)
+      ? ` · 📅 ${ferieNuove} ferie + 📡 ${reperNuove} reperibilità aggiornate` : '';
     toast(nuovi > 0
-      ? `✅ Sincronizzazione OK: ${nuovi} nuovi rapportini (${archivioDedup.length} totali)${totMsg}`
-      : `✅ Già aggiornato — nessun nuovo rapportino (${archivioDedup.length} in archivio)${totMsg}`);
+      ? `✅ Sincronizzazione OK: ${nuovi} nuovi rapportini (${archivioDedup.length} totali)${totMsg}${extraMsg}`
+      : `✅ Già aggiornato — nessun nuovo rapportino (${archivioDedup.length} in archivio)${totMsg}${extraMsg}`);
   } catch(e) {
     toast(`⚠️ Errore: ${e?.message || 'errore di rete'}`);
   } finally {
@@ -4581,7 +4646,7 @@ function _apptToEvent(appt) {
         `[mda_al:${(al.id||'').replace(/[|\]]/g,'')}|${(al.nome||'').replace(/[|\]]/g,'_')}|${(al.url||'').replace(/[\]]/g,'')}]`
       )
     ].filter(Boolean).join('\n'),
-    location: _apptLuogo(appt),
+    location: c.indirizzo || '',
     start: { dateTime: `${appt.data}T${ora}:00`, timeZone: 'Europe/Rome' },
     end:   { dateTime: `${appt.data}T${oraEnd}:00`, timeZone: 'Europe/Rome' },
     colorId: appt.completato ? '2' : '1'
@@ -4786,8 +4851,6 @@ async function gcalImport() {
             existing.allegati = evAllegati; needsSave = true;
           }
           if (existing.completato !== evCompletato) { existing.completato = evCompletato; needsSave = true; }
-          const _evLuogo = _luogoFromEvent(ev, existing.clienteId);
-          if ((existing.luogo || '') !== _evLuogo) { existing.luogo = _evLuogo; needsSave = true; }
           if (alreadyById && !alreadyById.gcalId) { alreadyById.gcalId = ev.id; needsSave = true; }
           continue;
         }
@@ -4806,7 +4869,6 @@ async function gcalImport() {
           note: (ev.description || '').replace(/\[mda_id:[^\]]+\]|\[mda_cid:[^\]]+\]|\[mda_al:[^\]]+\]|✅ COMPLETATO/g,'').trim(),
           allegati: evAllegati,
           completato: evCompletato,
-          luogo: _luogoFromEvent(ev, resolvedClienteId),
           source: 'gcal'
         });
         imported++;
@@ -4947,8 +5009,6 @@ async function techCalSync() {
         if (evClienteId && existing.clienteId !== evClienteId) { existing.clienteId = evClienteId; existing.clienteNome = evClienteNome; changed = true; }
         if (JSON.stringify(existing.allegati||[]) !== JSON.stringify(evAllegati)) { existing.allegati = evAllegati; changed = true; }
         if (existing.completato !== evCompletato)  { existing.completato   = evCompletato; changed = true; }
-        const _evLuogoT = _luogoFromEvent(ev, existing.clienteId || evClienteId);
-        if ((existing.luogo || '') !== _evLuogoT)  { existing.luogo        = _evLuogoT;    changed = true; }
         if (!existing.gcalId) { existing.gcalId = ev.id; changed = true; }
         if (evSquad && JSON.stringify(existing.squadra||[]) !== JSON.stringify(evSquad)) { existing.squadra = evSquad; changed = true; }
         if (changed) { needsSave = true; imported++; }
@@ -4962,7 +5022,6 @@ async function techCalSync() {
         clienteId: evClienteId, clienteNome: evClienteNome,
         tipo_intervento: evTipo, note: evNote,
         allegati: evAllegati, completato: evCompletato,
-        luogo: _luogoFromEvent(ev, evClienteId),
         source: 'gcal'
       });
       imported++;
@@ -5815,7 +5874,7 @@ function openDragCreateModal(techId, oraInizio, oraFine) {
 
     <div style="margin-bottom:14px">
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Cliente</label>
-      <select id="dc-cliente" class="form-control" style="margin-top:4px" onchange="aggiornaPlaceholderLuogo('dc-cliente','dc-luogo')">
+      <select id="dc-cliente" class="form-control" style="margin-top:4px">
         <option value="">— Seleziona cliente —</option>
         ${optsHtml}
       </select>
@@ -5824,11 +5883,6 @@ function openDragCreateModal(techId, oraInizio, oraFine) {
     <div style="margin-bottom:14px">
       <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Tipo intervento</label>
       <div class="chips dc-chips" style="margin-top:6px;flex-wrap:wrap">${chipsHtml}</div>
-    </div>
-
-    <div style="margin-bottom:14px">
-      <label style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Luogo (se diverso dal cliente)</label>
-      <input id="dc-luogo" type="text" class="form-control" placeholder="Indirizzo del cliente" style="margin-top:4px">
     </div>
 
     <div style="margin-bottom:18px">
@@ -5856,7 +5910,6 @@ function saveDragCreate(techId, dateStr) {
   const oraFine   = document.getElementById('dc-ora-fine').value;
   const tipoEl    = document.querySelector('.dc-chips .chip.selected');
   const note      = document.getElementById('dc-note').value.trim();
-  const luogo     = (document.getElementById('dc-luogo')?.value || '').trim();
 
   if (!clienteId) { toast('⚠️ Seleziona il cliente'); return; }
   if (!ora)       { toast('⚠️ Inserisci l\'ora di inizio'); return; }
@@ -5874,7 +5927,6 @@ function saveDragCreate(techId, dateStr) {
     ora_fine:        oraFine || '',
     tipo_intervento: tipo,
     note,
-    luogo,
     completato:      false,
     tipo:            'extra',
     source:          'drag',
@@ -6099,7 +6151,7 @@ function generaOreAdPersonam() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.68'; // new: campo Luogo negli interventi (VARIE/fuori sede), sync GCal location, link Maps; prev 2.67: // new: fix nomi tecnici OreAdPersonam (NOME COGNOME), reperibilità in agenda (verde)
+const _APP_VERSION = '2.68'; // new: Drive sync per ferie e reperibilità — upload automatico + download al "Sincronizza da Drive"
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
