@@ -3241,6 +3241,7 @@ function inviaPDF() {
    LOGOUT
 ═══════════════════════════════════════════════════════════ */
 function logout() {
+  _clearAllRefreshTimers(); // v2.70: ferma tutti i timer al logout
   currentTech = null;
   adminTechFilter = null;
   pinBuffer = '';
@@ -3270,6 +3271,8 @@ const _GCAL_API = 'https://www.googleapis.com/calendar/v3/calendars';
 
 // ── Drive ─────────────────────────────────────────────────
 let _driveTokenClient = null, _driveToken = null, _pendingRappDriveUpload = null, _pendingRappMetaUpload = null;
+let _driveRefreshTimer = null, _calRefreshTimer = null, _calSyncTimer = null;
+let _driveNoToast = false, _calNoToast = false; // sopprime toast su refresh silenzioso (v2.70)
 let _rappAllegatiPending = []; // allegati rapportino corrente (pending prima del salvataggio PDF)
 let _openApptModalId = null; // tiene traccia del modal aperto per aggiornarlo dopo Drive connect
 
@@ -3299,12 +3302,16 @@ function gisLoaded() {
       const exp = Date.now() + (resp.expires_in - 60) * 1000;
       localStorage.setItem('mda_gcal_tok', resp.access_token);
       localStorage.setItem('mda_gcal_exp', exp);
+      _scheduleCalRefresh(exp); // v2.70: auto-refresh 2 min prima della scadenza
       if (currentTech && currentTech.isAdmin) {
         gcalUpdateUI(true);
-        gcalImport();
+        if (!_calNoToast) gcalImport(); // non ricaricare tutto se è un refresh silenzioso
+        _calNoToast = false;
       } else {
         techCalUpdateUI(true);
         techCalSync();
+        _scheduleCalSync(); // v2.70: avvia sync automatica ogni 15 min
+        _calNoToast = false;
       }
     }
   });
@@ -3345,8 +3352,10 @@ function gisLoaded() {
       localStorage.setItem('mda_drive_tok', resp.access_token);
       localStorage.setItem('mda_drive_exp', exp);
       localStorage.setItem('mda_drive_scope', GCAL.DRIVE_SCOPE); // salva lo scope usato
+      _scheduleTokenRefresh(exp); // v2.70: auto-refresh 2 min prima della scadenza
       driveUpdateUI(true);
-      toast('☁️ Google Drive connesso!');
+      if (_driveNoToast) { _driveNoToast = false; } // refresh silenzioso: niente toast
+      else { toast('☁️ Google Drive connesso!'); }
       // Aggiorna il modal appuntamento aperto (se presente) per mostrare il pulsante allegati
       if (_openApptModalId) openApptModal(_openApptModalId);
       // Upload rapportino in sospeso (se il PDF è stato generato prima della connessione Drive)
@@ -3377,16 +3386,19 @@ function _gcalTryRestore() {
   const exp = parseInt(localStorage.getItem('mda_gcal_exp') || '0');
   if (tok && exp > Date.now()) {
     _gcalToken = tok;
+    _scheduleCalRefresh(exp); // v2.70: auto-refresh prima della scadenza
     if (currentTech && currentTech.isAdmin) {
       gcalUpdateUI(true);
       gcalImport();
     } else if (currentTech) {
       techCalUpdateUI(true);
       techCalSync();
+      _scheduleCalSync(); // v2.70: avvia sync automatica ogni 15 min
     }
   } else if (currentTech && _tokenClient) {
     // Token assente o scaduto: richiedi silenziosamente.
     // hint: email del tecnico → Google salta il picker account su dispositivi con più account.
+    _calNoToast = true;
     _tokenClient.requestAccessToken({ prompt: '', hint: currentTech.email || '' });
   }
 }
@@ -3536,6 +3548,51 @@ function _gcalSilentRefresh() {
   });
 }
 
+// ── Auto-refresh token (v2.70) ─────────────────────────────────────────────
+// Pianifica un silent refresh del token Drive 2 minuti prima della scadenza.
+// In questo modo i tecnici non vedono mai il banner "Connetti Drive" durante il turno.
+function _scheduleTokenRefresh(expMs) {
+  if (_driveRefreshTimer) clearTimeout(_driveRefreshTimer);
+  const delay = Math.max(10000, expMs - Date.now() - 2 * 60 * 1000);
+  _driveRefreshTimer = setTimeout(() => {
+    if (_driveTokenClient && currentTech && GCAL.DRIVE_FOLDER_ID) {
+      _driveNoToast = true;
+      _driveTokenClient.requestAccessToken({ prompt: '', hint: currentTech.email || '' });
+    }
+  }, delay);
+}
+
+// Pianifica un silent refresh del token Calendario 2 minuti prima della scadenza.
+function _scheduleCalRefresh(expMs) {
+  if (_calRefreshTimer) clearTimeout(_calRefreshTimer);
+  const delay = Math.max(10000, expMs - Date.now() - 2 * 60 * 1000);
+  _calRefreshTimer = setTimeout(() => {
+    if (_tokenClient && currentTech) {
+      _calNoToast = true;
+      _tokenClient.requestAccessToken({ prompt: '', hint: currentTech.email || '' });
+    }
+  }, delay);
+}
+
+// Avvia la sincronizzazione automatica del calendario ogni 15 minuti (solo tecnici).
+function _scheduleCalSync() {
+  if (_calSyncTimer) clearInterval(_calSyncTimer);
+  if (!currentTech || currentTech.isAdmin) return;
+  _calSyncTimer = setInterval(() => {
+    if (_gcalToken) techCalSync();
+    else if (_tokenClient) {
+      _calNoToast = true;
+      _tokenClient.requestAccessToken({ prompt: '', hint: currentTech.email || '' });
+    }
+  }, 15 * 60 * 1000); // ogni 15 minuti
+}
+
+function _clearAllRefreshTimers() {
+  if (_driveRefreshTimer) { clearTimeout(_driveRefreshTimer); _driveRefreshTimer = null; }
+  if (_calRefreshTimer)   { clearTimeout(_calRefreshTimer);   _calRefreshTimer   = null; }
+  if (_calSyncTimer)      { clearInterval(_calSyncTimer);     _calSyncTimer      = null; }
+}
+
 function _driveTryRestore() {
   if (!_gisReady) return;
 
@@ -3564,9 +3621,11 @@ function _driveTryRestore() {
   if (tok && exp > Date.now()) {
     _driveToken = tok;
     driveUpdateUI(true);
+    _scheduleTokenRefresh(exp); // v2.70: pianifica refresh automatico prima della scadenza
   } else if (currentTech && _driveTokenClient && GCAL.DRIVE_FOLDER_ID) {
     // Token assente o scaduto: richiedi silenziosamente.
     // hint: email del tecnico → Google salta il picker account.
+    _driveNoToast = true;
     _driveTokenClient.requestAccessToken({ prompt: '', hint: currentTech.email || '' });
   }
 }
@@ -3586,6 +3645,8 @@ function gcalConnect() {
 }
 
 function gcalDisconnect() {
+  if (_calRefreshTimer) { clearTimeout(_calRefreshTimer); _calRefreshTimer = null; } // v2.70
+  if (_calSyncTimer)    { clearInterval(_calSyncTimer);   _calSyncTimer    = null; } // v2.70
   if (_gcalToken) google.accounts.oauth2.revoke(_gcalToken, () => {});
   _gcalToken = null;
   localStorage.removeItem('mda_gcal_tok');
@@ -3603,6 +3664,7 @@ function driveConnect() {
 }
 
 function driveDisconnect() {
+  if (_driveRefreshTimer) { clearTimeout(_driveRefreshTimer); _driveRefreshTimer = null; } // v2.70
   if (_driveToken) google.accounts.oauth2.revoke(_driveToken, () => {});
   _driveToken = null;
   localStorage.removeItem('mda_drive_tok');
@@ -3888,6 +3950,7 @@ function rimuoviAllegato(apptId, idx) {
 
 // Helper: invalida token Drive e aggiorna UI
 function _driveTokenInvalid(reason) {
+  if (_driveRefreshTimer) { clearTimeout(_driveRefreshTimer); _driveRefreshTimer = null; } // v2.70
   _driveToken = null;
   localStorage.removeItem('mda_drive_tok');
   localStorage.removeItem('mda_drive_exp');
@@ -6166,7 +6229,30 @@ function generaOreAdPersonam() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.69'; // fix: JSON sidecar (rapp_meta) ora viene caricato su Drive anche via percorso Intervento — aggiunto _pendingRappMetaUpload per token scaduto; rimossa guard !rapp.ore
+const _APP_VERSION = '2.70'; // auto-refresh token Drive/Calendar (timer 2 min prima scadenza); visibilitychange per ripresa da background; auto-sync agenda tecnici ogni 15 min
+
+// ── Ripresa da background (v2.70) ─────────────────────────────────────────────
+// Quando l'app torna in primo piano (es. dopo ore in background su iOS/Android),
+// i token potrebbero essere scaduti. Questo listener tenta il refresh silenzioso
+// senza mostrare alcun popup, garantendo continuità di servizio.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !currentTech || !_gisReady) return;
+  // Drive: riprova silent reconnect se token assente o scaduto
+  if (GCAL.DRIVE_FOLDER_ID) {
+    const driveExp = parseInt(localStorage.getItem('mda_drive_exp') || '0');
+    if (!_driveToken || driveExp < Date.now() + 60000) {
+      _driveTryRestore();
+    }
+  }
+  // Calendario: riprova silent reconnect se token assente o scaduto,
+  // altrimenti esegui subito techCalSync per aggiornare l'agenda
+  const calExp = parseInt(localStorage.getItem('mda_gcal_exp') || '0');
+  if (!_gcalToken || calExp < Date.now() + 60000) {
+    _gcalTryRestore();
+  } else if (!currentTech.isAdmin) {
+    techCalSync(); // token valido → aggiorna l'agenda in background senza popup
+  }
+});
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
