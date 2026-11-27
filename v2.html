@@ -3154,21 +3154,8 @@ async function generaPDF() {
   // che evita il bug blob-URL di WKWebView che produce file vuoti
   _downloadPDF(pdfBlob, filename); // non awaited: prosegui subito con Drive upload
 
-  // Upload automatico su Google Drive (se connesso)
-  if (GCAL.DRIVE_FOLDER_ID) {
-    if (_driveToken) {
-      uploadRapportinoDrive(pdfBlob, filename);
-    } else if (_driveTokenClient) {
-      _pendingRappDriveUpload = { blob: pdfBlob, name: filename };
-      toast('☁️ Connetti Drive per caricare il rapportino…');
-      // Usa prompt:'consent' per mostrare il popup Google anche se il silent reconnect fallirebbe
-      _driveTokenClient.requestAccessToken({ prompt: 'consent' });
-    } else {
-      toast('⚠️ Drive non connesso — PDF salvato solo in locale');
-    }
-  }
-
-  // Incrementa numero rapportino
+  // Incrementa contatore e aggiorna UI prima del Drive upload
+  // (il rapp deve essere creato PRIMA del blocco Drive per poterlo accodare assieme al PDF)
   rapportinoNum++;
   localStorage.setItem('mda_rapp_num', rapportinoNum);
   document.getElementById('rapp-numero').textContent = _fmtRappNum(currentTech?.id, rapportinoNum);
@@ -3192,7 +3179,7 @@ async function generaPDF() {
   }
   const rapp = {
     id: 'r_' + Date.now(),
-    numero: rapportinoNum - 1, // rapportinoNum è già incrementato a riga precedente
+    numero: rapportinoNum - 1, // rapportinoNum è già incrementato sopra
     tecnico: tecnicoId,
     cliente: clienteId,
     commessa,
@@ -3206,8 +3193,25 @@ async function generaPDF() {
   const archivio = JSON.parse(localStorage.getItem('mda_rapportini') || '[]');
   archivio.push(rapp);
   localStorage.setItem('mda_rapportini', JSON.stringify(archivio));
-  // Carica automaticamente il JSON di metadata su Drive (per sync presenze admin)
-  if (GCAL.DRIVE_FOLDER_ID && _driveToken) uploadRappMetaDrive(rapp);
+
+  // Upload automatico su Google Drive (PDF + JSON metadata insieme)
+  // FIX v2.69: il rapp è già salvato, quindi il JSON sidecar viene accodato assieme
+  // al PDF anche quando il token è scaduto — _pendingRappMetaUpload garantisce
+  // che entrambi vengano caricati al rinnovamento del token.
+  if (GCAL.DRIVE_FOLDER_ID) {
+    if (_driveToken) {
+      uploadRapportinoDrive(pdfBlob, filename);
+      uploadRappMetaDrive(rapp); // JSON sidecar — immediato
+    } else if (_driveTokenClient) {
+      _pendingRappDriveUpload = { blob: pdfBlob, name: filename };
+      _pendingRappMetaUpload = rapp; // JSON sidecar — in attesa token
+      toast('☁️ Connetti Drive per caricare il rapportino…');
+      // Usa prompt:'consent' per mostrare il popup Google anche se il silent reconnect fallirebbe
+      _driveTokenClient.requestAccessToken({ prompt: 'consent' });
+    } else {
+      toast('⚠️ Drive non connesso — PDF salvato solo in locale');
+    }
+  }
 
   // Reset allegati pending dopo il salvataggio
   _rappAllegatiPending = [];
@@ -3265,7 +3269,7 @@ let _tokenClient = null;
 const _GCAL_API = 'https://www.googleapis.com/calendar/v3/calendars';
 
 // ── Drive ─────────────────────────────────────────────────
-let _driveTokenClient = null, _driveToken = null, _pendingRappDriveUpload = null;
+let _driveTokenClient = null, _driveToken = null, _pendingRappDriveUpload = null, _pendingRappMetaUpload = null;
 let _rappAllegatiPending = []; // allegati rapportino corrente (pending prima del salvataggio PDF)
 let _openApptModalId = null; // tiene traccia del modal aperto per aggiornarlo dopo Drive connect
 
@@ -3317,6 +3321,7 @@ function gisLoaded() {
           toast('☁️ Autorizza Drive per caricare il rapportino…');
           try { _driveTokenClient.requestAccessToken({ prompt: 'consent', hint: currentTech?.email || '' }); } catch(e) {
             _pendingRappDriveUpload = null;
+            _pendingRappMetaUpload = null; // FIX v2.69: azzera anche il JSON sidecar in attesa
             toast('⚠️ Drive non disponibile — rapportino salvato solo in locale');
           }
         } else {
@@ -3349,6 +3354,14 @@ function gisLoaded() {
         const { blob, name } = _pendingRappDriveUpload;
         _pendingRappDriveUpload = null;
         uploadRapportinoDrive(blob, name);
+      }
+      // FIX v2.69: carica anche il JSON sidecar in attesa (rapp_meta_*.json)
+      // Questo era il bug principale: il PDF veniva accodato ma il JSON no,
+      // quindi al rinnovamento del token solo il PDF veniva caricato su Drive.
+      if (_pendingRappMetaUpload) {
+        const rapp = _pendingRappMetaUpload;
+        _pendingRappMetaUpload = null;
+        uploadRappMetaDrive(rapp);
       }
     }
   });
@@ -4356,8 +4369,10 @@ function _pulisciDuplicatiArchivio() {
 async function uploadRappMetaDrive(rapp) {
   if (!_driveToken || !GCAL.DRIVE_FOLDER_ID) return;
   // Salta se mancano dati essenziali (rapportino avviato ma non completato)
-  if (!rapp || !rapp.id || !rapp.ore || !rapp.data || !rapp.tecnico) {
-    console.log('rapp_meta: skip upload, dati incompleti (ore:', rapp?.ore, 'data:', rapp?.data, ')'); return;
+  // FIX v2.69: rimossa la check !rapp.ore — ore=0 è legittimo (es. appuntamento senza orario fine)
+  // e non deve impedire il caricamento del JSON sidecar su Drive.
+  if (!rapp || !rapp.id || !rapp.data || !rapp.tecnico) {
+    console.log('rapp_meta: skip upload, dati incompleti (data:', rapp?.data, ')'); return;
   }
   const metaFolderId = await _driveGetMetaFolderId();
   const filename = 'rapp_meta_' + rapp.id + '.json';
@@ -6151,7 +6166,7 @@ function generaOreAdPersonam() {
 /* ═══════════════════════════════════════════════════════════
    VERSIONE APP — controllo aggiornamento cache
 ═══════════════════════════════════════════════════════════ */
-const _APP_VERSION = '2.68'; // new: Drive sync per ferie e reperibilità — upload automatico + download al "Sincronizza da Drive"
+const _APP_VERSION = '2.69'; // fix: JSON sidecar (rapp_meta) ora viene caricato su Drive anche via percorso Intervento — aggiunto _pendingRappMetaUpload per token scaduto; rimossa guard !rapp.ore
 
 // ── Helpers data plurigiornaliero ─────────────────────────
 function onDataInizioChange() {
